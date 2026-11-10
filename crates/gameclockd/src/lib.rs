@@ -9,6 +9,7 @@ use std::time::Duration;
 pub mod sim;
 
 pub mod command;
+pub mod control;
 
 use command::{Command, OK, status_reply};
 
@@ -63,6 +64,10 @@ impl Clock for SystemClock {
         Timestamp::now().to_zoned(self.zone.clone())
     }
 }
+
+/// The stack size of each helper thread. They only block and send events
+/// (docs/adr/0016).
+pub const THREAD_STACK: usize = 64 * 1024;
 
 /// A command and the sender for its reply line (docs/adr/0016).
 #[derive(Debug)]

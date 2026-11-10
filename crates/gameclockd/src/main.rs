@@ -15,7 +15,9 @@ use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 
-use gameclockd::{ChannelWait, Event, SystemClock, exit_status, local_zone, parse_args, run};
+use gameclockd::{
+    ChannelWait, Event, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args, run,
+};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -69,9 +71,6 @@ fn main() -> ExitCode {
     }
     ExitCode::from(exit_status(&result))
 }
-
-/// The stack size of each helper thread. They only block and send events.
-const THREAD_STACK: usize = 64 * 1024;
 
 /// Register SIGTERM and SIGINT. Start a thread that sends one shutdown event
 /// when the first of them arrives.
