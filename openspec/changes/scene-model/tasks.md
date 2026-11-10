@@ -25,8 +25,8 @@
 - [x] 4.2 Green: add `Clock`, `SystemClock`, `Wait`, `Wake`, and the loop in `run`. Verify that the 4.1 tests pass.
 - [x] 4.3 Red: write a `SignalWait` unit test with a `UnixStream` pair. A past deadline gives `Deadline` at once. A 50 ms deadline gives `Deadline` after 50 ms or more. A byte in the pipe gives `Shutdown`. Add "No presents while waiting": a static scene and a byte written 500 ms later. See the tests fail because `SignalWait` does not exist.
 - [x] 4.4 Green: add `SignalWait` (D5). Change `main.rs` to register SIGTERM and SIGINT on the pipe and to call the new `run` with `Heartbeat`. Verify that the 4.3 tests and the existing SIGTERM and SIGINT tests in `tests/cli.rs` pass.
-- [ ] 4.5 Red: write the test for "Missing time zone falls back to UTC". It calls the library function that turns the zone lookup into a `TimeZone` and a message (D8). Add a `tests/cli.rs` test for "Time zone from the environment" with `TZ=America/Los_Angeles`. See both fail.
-- [ ] 4.6 Green: add the function and call it from `main.rs`. Verify that the 4.5 tests pass and that `cargo sim` shows the marker move once each second.
+- [x] 4.5 Red: write the test for "Missing time zone falls back to UTC". It calls the library function that turns the zone lookup into a `TimeZone` and a message (D8). Add a `tests/cli.rs` test for "Time zone from the environment" with `TZ=America/Los_Angeles`. See both fail.
+- [x] 4.6 Green: add the function and call it from `main.rs`. Verify that the 4.5 tests pass and that `cargo sim` shows the marker move once each second.
 - [ ] 4.7 Update `docs/design/architecture.md` (scene model, data flow, daemon lifecycle, crates), `glossary.md` (scene, compositor, heartbeat, deadline), `roadmap.md` (mark `scene-model` done), and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
 
 ## 5. On-device verification and measurements

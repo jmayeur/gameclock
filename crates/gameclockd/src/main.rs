@@ -15,7 +15,7 @@ use gameclock_core::heartbeat::Heartbeat;
 use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
 
-use gameclockd::{SignalWait, SystemClock, exit_status, parse_args, run};
+use gameclockd::{SignalWait, SystemClock, exit_status, local_zone, parse_args, run};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -38,7 +38,10 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let clock = SystemClock::new(TimeZone::UTC);
+    // Read the time zone once. A change needs a restart (docs/adr/0013).
+    let (zone, message) = local_zone(TimeZone::try_system());
+    eprintln!("{message}");
+    let clock = SystemClock::new(zone);
 
     let result = {
         let mut panel = match panel::create(&driver_args) {

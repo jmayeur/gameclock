@@ -24,8 +24,13 @@ struct Daemon {
 
 impl Daemon {
     fn spawn(args: &[&str]) -> Self {
+        Self::spawn_with_env(args, &[])
+    }
+
+    fn spawn_with_env(args: &[&str], env: &[(&str, &str)]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_gameclockd"))
             .args(args)
+            .envs(env.iter().copied())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -155,6 +160,14 @@ mod log_panel {
         d.drain();
         assert_eq!(status.code(), Some(2));
         assert!(d.stderr_contains("--frobnicate"), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
+    fn time_zone_from_the_environment() {
+        let mut d = Daemon::spawn_with_env(&[], &[("TZ", "America/Los_Angeles")]);
+        d.wait_for(READY);
+        let line = "gameclockd: the time zone is America/Los_Angeles.";
+        assert!(d.seen.iter().any(|l| l == line), "stderr: {:?}", d.seen);
     }
 
     #[test]

@@ -130,6 +130,26 @@ impl Wait for SignalWait {
     }
 }
 
+/// Turn the result of the system time zone lookup into the zone that the
+/// daemon uses, and the line to write to stderr. If the lookup failed, the
+/// zone is UTC (docs/adr/0013).
+#[must_use]
+pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
+    match lookup {
+        Ok(zone) => {
+            let message = match zone.iana_name() {
+                Some(name) => format!("gameclockd: the time zone is {name}."),
+                None => "gameclockd: the time zone has no name. The daemon uses it.".to_owned(),
+            };
+            (zone, message)
+        }
+        Err(_) => (
+            TimeZone::UTC,
+            "gameclockd: the system time zone is not available. The daemon uses UTC.".to_owned(),
+        ),
+    }
+}
+
 /// Run the event loop until a stop signal (docs/adr/0006).
 ///
 /// The loop renders `base` for the current time and presents each changed
@@ -585,6 +605,41 @@ mod tests {
             );
             assert_eq!(panel.presents.len(), 1);
             writer.join().unwrap();
+        }
+    }
+
+    mod time_zone {
+        use super::*;
+
+        #[test]
+        fn named_zone_is_used_and_named() {
+            let zone = TimeZone::get("America/Los_Angeles").unwrap();
+            let (got, message) = local_zone(Ok(zone.clone()));
+            assert_eq!(got, zone);
+            assert_eq!(message, "gameclockd: the time zone is America/Los_Angeles.");
+        }
+
+        #[test]
+        fn zone_with_no_name_is_used() {
+            let zone = TimeZone::fixed(jiff::tz::offset(-8));
+            let (got, message) = local_zone(Ok(zone.clone()));
+            assert_eq!(got, zone);
+            assert_eq!(
+                message,
+                "gameclockd: the time zone has no name. The daemon uses it."
+            );
+        }
+
+        #[test]
+        fn missing_time_zone_falls_back_to_utc() {
+            let lookup = TimeZone::get("Not/A_Zone");
+            assert!(lookup.is_err());
+            let (got, message) = local_zone(lookup);
+            assert_eq!(got, TimeZone::UTC);
+            assert_eq!(
+                message,
+                "gameclockd: the system time zone is not available. The daemon uses UTC."
+            );
         }
     }
 }
