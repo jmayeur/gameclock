@@ -191,7 +191,10 @@ mod simulator {
         let status = d.exit_within(Duration::from_secs(1));
         assert_eq!(status.code(), Some(0), "exit status after SIGTERM");
         let out = d.stdout();
-        let rows: Vec<&str> = out.lines().filter(|l| l.contains('▀')).collect();
+        // The heartbeat can present more than one frame. Each frame starts
+        // with the cursor-home sequence. Check the last frame.
+        let last = out.rsplit("\x1b[H").next().unwrap_or_default();
+        let rows: Vec<&str> = last.lines().filter(|l| l.contains('▀')).collect();
         assert_eq!(rows.len(), 16, "stdout: {out:?}");
         assert!(rows.iter().all(|r| r.matches('▀').count() == 64));
     }

@@ -1,19 +1,21 @@
 //! `gameclockd`: the game clock daemon.
 //!
-//! Now it shows the diagnostic test pattern and waits for a stop signal
+//! It runs the event loop with the heartbeat scene until a stop signal
 //! (`openspec/specs/daemon-lifecycle`). The library has the behavior. This
-//! file connects the arguments, the signals, and the panel that the build
-//! selects.
+//! file connects the arguments, the signals, the clock, and the panel that
+//! the build selects.
 
 #[cfg(all(feature = "hzeller", feature = "simulator"))]
 compile_error!("the hzeller and simulator features cannot be used together");
 
+use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 
+use gameclock_core::heartbeat::Heartbeat;
+use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
-use signal_hook::iterator::Signals;
 
-use gameclockd::{exit_status, parse_args, run};
+use gameclockd::{SignalWait, SystemClock, exit_status, parse_args, run};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -29,13 +31,14 @@ fn main() -> ExitCode {
 
     // Register before the driver starts. Then a stop signal during
     // initialization is not lost (docs/adr/0010).
-    let mut signals = match Signals::new([SIGTERM, SIGINT]) {
-        Ok(s) => s,
+    let mut wait = match signal_pipe() {
+        Ok(w) => w,
         Err(e) => {
             eprintln!("gameclockd: cannot register signal handlers: {e}");
             return ExitCode::FAILURE;
         }
     };
+    let clock = SystemClock::new(TimeZone::UTC);
 
     let result = {
         let mut panel = match panel::create(&driver_args) {
@@ -45,11 +48,9 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
-        // Blocks in a read on the signal-hook self-pipe. No timer, no extra
-        // thread.
-        run(&mut panel, || {
-            let _ = signals.forever().next();
-        })
+        // Each wait blocks in a read on the signal pipe, with a timeout until
+        // the next scene change. No extra thread (docs/adr/0013).
+        run(&mut panel, Box::new(Heartbeat), &clock, &mut wait)
         // The panel drops here, before the report and the exit. The hzeller
         // driver stops its refresh thread and blanks the LEDs.
     };
@@ -58,6 +59,15 @@ fn main() -> ExitCode {
         eprintln!("gameclockd: {e}");
     }
     ExitCode::from(exit_status(&result))
+}
+
+/// Register SIGTERM and SIGINT to write a byte to a socket pair. Give the
+/// wait on the read end.
+fn signal_pipe() -> std::io::Result<SignalWait> {
+    let (read, write) = UnixStream::pair()?;
+    signal_hook::low_level::pipe::register(SIGTERM, write.try_clone()?)?;
+    signal_hook::low_level::pipe::register(SIGINT, write)?;
+    Ok(SignalWait::new(read))
 }
 
 /// The real LED matrix (docs/adr/0009).
