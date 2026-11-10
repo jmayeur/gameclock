@@ -1,7 +1,7 @@
 //! `gameclockd`: the game clock daemon.
 //!
-//! It runs the event loop with the heartbeat scene until a stop signal
-//! (`openspec/specs/daemon-lifecycle`). The library has the behavior. This
+//! It runs the event loop with the clock, or with the heartbeat in the
+//! test-pattern mode, until a stop signal (`openspec/specs/daemon-lifecycle`). The library has the behavior. This
 //! file connects the arguments, the signals, the clock, and the panel that
 //! the build selects.
 
@@ -11,7 +11,6 @@ compile_error!("the hzeller and simulator features cannot be used together");
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 
-use gameclock_core::heartbeat::Heartbeat;
 use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
 
@@ -21,7 +20,7 @@ use gameclockd::{SignalWait, SystemClock, exit_status, local_zone, parse_args, r
 const USAGE: u8 = 2;
 
 fn main() -> ExitCode {
-    let driver_args = match parse_args(std::env::args().skip(1)) {
+    let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
         Err(e) => {
             eprintln!("gameclockd: {e}");
@@ -42,9 +41,10 @@ fn main() -> ExitCode {
     let (zone, message) = local_zone(TimeZone::try_system());
     eprintln!("{message}");
     let clock = SystemClock::new(zone);
+    eprintln!("{}", args.mode.announcement());
 
     let result = {
-        let mut panel = match panel::create(&driver_args) {
+        let mut panel = match panel::create(&args.driver) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("gameclockd: {e}");
@@ -53,7 +53,7 @@ fn main() -> ExitCode {
         };
         // Each wait blocks in a read on the signal pipe, with a timeout until
         // the next scene change. No extra thread (docs/adr/0013).
-        run(&mut panel, Box::new(Heartbeat), &clock, &mut wait)
+        run(&mut panel, args.mode.base_scene(), &clock, &mut wait)
         // The panel drops here, before the report and the exit. The hzeller
         // driver stops its refresh thread and blanks the LEDs.
     };

@@ -9,6 +9,9 @@ use std::time::Duration;
 #[cfg(feature = "simulator")]
 pub mod sim;
 
+use gameclock_core::clock::Clock as ClockScene;
+use gameclock_core::heartbeat::Heartbeat;
+use gameclock_core::schedule::Schedule;
 use gameclock_core::{Brightness, Compositor, Frame, Panel, Scene};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
@@ -181,7 +184,8 @@ pub fn run<P: Panel>(
     }
 }
 
-/// An argument that isn't an hzeller `--led-*` driver flag.
+/// An argument that is not an hzeller `--led-*` driver flag or
+/// `--test-pattern`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UsageError(pub String);
 
@@ -189,7 +193,7 @@ impl fmt::Display for UsageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "unknown argument '{}'. gameclockd accepts only --led-* driver flags.",
+            "unknown argument '{}'. gameclockd accepts only --led-* driver flags and --test-pattern.",
             self.0
         )
     }
@@ -197,25 +201,72 @@ impl fmt::Display for UsageError {
 
 impl std::error::Error for UsageError {}
 
-/// Check the command line. Only `--led-*` driver flags are accepted. The
-/// function returns them unchanged for the driver to parse
-/// (`openspec/specs/daemon-lifecycle`, docs/adr/0009).
+/// The argument that selects the test-pattern mode.
+pub const TEST_PATTERN: &str = "--test-pattern";
+
+/// The base scene that the daemon shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// The clock with the legacy schedule. This is the default.
+    Clock,
+    /// The heartbeat scene, to check the panel (`--test-pattern`).
+    TestPattern,
+}
+
+impl Mode {
+    /// Make the base scene of this mode.
+    #[must_use]
+    pub fn base_scene(self) -> Box<dyn Scene> {
+        match self {
+            Self::Clock => Box::new(ClockScene::new(Schedule::legacy())),
+            Self::TestPattern => Box::new(Heartbeat),
+        }
+    }
+
+    /// The startup line that names the base scene.
+    #[must_use]
+    pub fn announcement(self) -> &'static str {
+        match self {
+            Self::Clock => "gameclockd: the base scene is the clock.",
+            Self::TestPattern => "gameclockd: the base scene is the test pattern.",
+        }
+    }
+}
+
+/// The checked command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Args {
+    /// The base scene.
+    pub mode: Mode,
+    /// The `--led-*` flags in their order, for the driver.
+    pub driver: Vec<String>,
+}
+
+/// Check the command line. Only `--led-*` driver flags and `--test-pattern`
+/// are accepted. The function gives the driver flags unchanged and in their
+/// order, for the driver to parse (`openspec/specs/daemon-lifecycle`,
+/// docs/adr/0009).
 ///
 /// # Errors
-/// [`UsageError`] naming the first argument that isn't a `--led-*` flag.
-pub fn parse_args<I>(args: I) -> Result<Vec<String>, UsageError>
+/// [`UsageError`] that names the first argument that is not accepted.
+pub fn parse_args<I>(args: I) -> Result<Args, UsageError>
 where
     I: IntoIterator<Item = String>,
 {
-    args.into_iter()
-        .map(|arg| {
-            if arg.starts_with("--led-") {
-                Ok(arg)
-            } else {
-                Err(UsageError(arg))
-            }
-        })
-        .collect()
+    let mut parsed = Args {
+        mode: Mode::Clock,
+        driver: Vec::new(),
+    };
+    for arg in args {
+        if arg == TEST_PATTERN {
+            parsed.mode = Mode::TestPattern;
+        } else if arg.starts_with("--led-") {
+            parsed.driver.push(arg);
+        } else {
+            return Err(UsageError(arg));
+        }
+    }
+    Ok(parsed)
 }
 
 /// A panel for builds without the LED driver. It only logs its presents, so
@@ -267,11 +318,8 @@ mod tests {
     use std::collections::VecDeque;
     use std::rc::Rc;
 
-    use gameclock_core::clock::Clock as ClockScene;
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::embedded_graphics::prelude::*;
-    use gameclock_core::heartbeat::Heartbeat;
-    use gameclock_core::schedule::Schedule;
     use gameclock_core::{Brightness, Frame, Scene};
     use jiff::tz::TimeZone;
     use jiff::{Timestamp, Zoned};
@@ -465,12 +513,62 @@ mod tests {
     #[test]
     fn driver_flags_are_accepted_unchanged() {
         let given = args(&["--led-pwm-bits=7", "--led-show-refresh"]);
-        assert_eq!(parse_args(given.clone()), Ok(given));
+        let expected = Args {
+            mode: Mode::Clock,
+            driver: given.clone(),
+        };
+        assert_eq!(parse_args(given), Ok(expected));
     }
 
     #[test]
-    fn no_arguments_is_fine() {
-        assert_eq!(parse_args(Vec::new()), Ok(Vec::new()));
+    fn no_arguments_is_the_clock() {
+        let expected = Args {
+            mode: Mode::Clock,
+            driver: Vec::new(),
+        };
+        assert_eq!(parse_args(Vec::new()), Ok(expected));
+    }
+
+    #[test]
+    fn test_pattern_mode_is_not_a_driver_flag() {
+        let given = args(&[
+            "--led-pwm-bits=8",
+            "--test-pattern",
+            "--led-slowdown-gpio=1",
+        ]);
+        let expected = Args {
+            mode: Mode::TestPattern,
+            driver: args(&["--led-pwm-bits=8", "--led-slowdown-gpio=1"]),
+        };
+        assert_eq!(parse_args(given), Ok(expected));
+    }
+
+    #[test]
+    fn modes_name_their_base_scene() {
+        assert_eq!(
+            Mode::Clock.announcement(),
+            "gameclockd: the base scene is the clock."
+        );
+        assert_eq!(
+            Mode::TestPattern.announcement(),
+            "gameclockd: the base scene is the test pattern."
+        );
+    }
+
+    #[test]
+    fn modes_make_their_base_scene() {
+        let now = ts("2026-11-10T09:05:00Z").to_zoned(TimeZone::UTC);
+        let mut clock = Frame::new(64, 32);
+        Mode::Clock.base_scene().render(&now, &mut clock);
+        let mut expected = Frame::new(64, 32);
+        legacy_clock().render(&now, &mut expected);
+        assert_eq!(clock, expected);
+
+        let mut pattern = Frame::new(64, 32);
+        Mode::TestPattern.base_scene().render(&now, &mut pattern);
+        let mut expected = Frame::new(64, 32);
+        Heartbeat.render(&now, &mut expected);
+        assert_eq!(pattern, expected);
     }
 
     #[test]
@@ -580,7 +678,7 @@ mod tests {
         );
         assert_eq!(
             UsageError("--frobnicate".into()).to_string(),
-            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags."
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags and --test-pattern."
         );
     }
 
