@@ -53,17 +53,17 @@
 
 ## 8. On-device validation (Pi Zero W)
 
-- [ ] 8.1 Measure the legacy baseline before deploying: run `scripts/measure.sh` on the legacy clock's Python process for 60 s idle (no messages), then stop the service and run its exact `ExecStart` with `--led-show-refresh` to read refresh Hz. Record CPU % (total and per thread), RSS, refresh Hz, flags, and window in `openspec/changes/panel-bring-up/measurements.md`.
-- [ ] 8.2 Deploy with `scripts/deploy.sh` (no `--enable`). Verify "Service replaces the legacy clock" and "Test pattern on the real panel": correct corners, full border, bars, ramp, no tearing.
-- [ ] 8.3 Verify the driver scenarios on the device: "Driver flags reach the driver", "A flag overrides a default", "Invalid flags fail at startup", "Unprivileged start fails cleanly". Record outcomes in `measurements.md`.
-- [ ] 8.4 Verify lifecycle and service scenarios on the device: "Idle daemon does not wake" (via `measure.sh` context switches and CPU time), "Panel is dark after stop", "Crash is restarted", "Legacy clock is a one-command rollback", "Plain deploy leaves boot unchanged", "Enable swaps the boot service" (then `--rollback`). Record outcomes.
-- [ ] 8.5 Measure `gameclockd` with the same driver flags as the legacy run: `measure.sh` for 60 s idle, then refresh Hz with `--led-show-refresh` via `/etc/default/gameclockd`. Record in `measurements.md` next to the legacy numbers. Verify the table is complete ("Baseline table is complete").
-- [ ] 8.6 Answer the hardware open items (GPIO mapping, PWM mod, hardware pulse) and update `docs/hardware/pi-zero-w.md`; link the measurements from ADR-0006's baseline note if it helps readers. Leave the legacy clock as the boot service (`scripts/deploy.sh --rollback`).
+- [x] 8.1 Measure the legacy baseline before deploying: run `scripts/measure.sh` on the legacy clock's Python process for 60 s idle (no messages), then stop the service and run its exact `ExecStart` with `--led-show-refresh` to read refresh Hz. Record CPU % (total and per thread), RSS, refresh Hz, flags, and window in `openspec/changes/panel-bring-up/measurements.md`.
+- [x] 8.2 Deploy with `scripts/deploy.sh` (no `--enable`). Verify "Service replaces the legacy clock" and "Test pattern on the real panel": correct corners, full border, bars, ramp, no tearing.
+- [x] 8.3 Verify the driver scenarios on the device: "Driver flags reach the driver", "A flag overrides a default", "Invalid flags fail at startup", "Rejected driver options fail cleanly", "Unprivileged start warns and keeps running". Record outcomes in `measurements.md`.
+- [x] 8.4 Verify lifecycle and service scenarios on the device: "Idle daemon does not wake" (via `measure.sh` context switches and CPU time), "Panel is dark after stop", "Crash is restarted", "Legacy clock is a one-command rollback", "Plain deploy leaves boot unchanged", "Enable swaps the boot service" (then `--rollback`). Record outcomes. The two reboot scenarios were skipped by decision on 2026-11-09 (the Pi is CPU-constrained) and are recorded as partial and not run.
+- [x] 8.5 Measure `gameclockd` with the same driver flags as the legacy run: `measure.sh` for 60 s idle, then refresh Hz with `--led-show-refresh` via `/etc/default/gameclockd`. Record in `measurements.md` next to the legacy numbers. Verify the table is complete ("Baseline table is complete").
+- [x] 8.6 Answer the hardware open items (GPIO mapping, PWM mod, hardware pulse) and update `docs/hardware/pi-zero-w.md`; link the measurements from ADR-0006's baseline note if it helps readers. Leave the legacy clock as the boot service (`scripts/deploy.sh --rollback`).
 
 ## 9. Wrap-up
 
-- [ ] 9.1 Update `docs/design/roadmap.md` (panel bring-up done, with a link to the measurements) and `CHANGELOG.md` (driver crate, test pattern, daemon lifecycle, Pi build, deploy and measurement scripts, ADR-0009/0010). Verify both read correctly.
-- [ ] 9.2 Run `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo deny check`, `cargo check --target arm-unknown-linux-gnueabihf`, `scripts/build-pi.sh && scripts/check-pi-binary.sh`, and `openspec validate --all --strict`. Verify all pass.
+- [x] 9.1 Update `docs/design/roadmap.md` (panel bring-up done, with a link to the measurements) and `CHANGELOG.md` (driver crate, test pattern, daemon lifecycle, Pi build, deploy and measurement scripts, ADR-0009/0010). Verify both read correctly.
+- [x] 9.2 Run `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo deny check`, `cargo check --target arm-unknown-linux-gnueabihf`, `scripts/build-pi.sh && scripts/check-pi-binary.sh`, and `openspec validate --all --strict`. Verify all pass.
 
 ## Workflow follow-up
 

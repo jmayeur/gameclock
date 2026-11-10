@@ -46,22 +46,44 @@ not counted.
 - `gameclockd`'s main thread did not wake in 60 s. This passes the "Idle
   daemon does not wake" scenario.
 - `gameclockd` uses about a quarter of the legacy memory.
-- `gameclockd` refreshes about 9% slower with the same settings. The cause is
-  in the driver build (version or compiler), not in application CPU. Not yet
-  explained.
+- `gameclockd` refreshes about 9% slower with the same settings. The driver
+  version is not the cause: our build of the 2023 driver is slower still
+  (141 Hz). The legacy driver was compiled on the Pi with gcc 8.3 `-O3`. Ours
+  is compiled with zig (clang). The compiler is the likely cause. We did not
+  check this yet.
 - Both programs show random shimmer glitches. The glitches are more visible
-  with `gameclockd`.
+  with `gameclockd`, and mainly when the whole panel is lit (the test pattern,
+  the legacy panic screen). A clock face or a message shows few glitches. We
+  accept this for now. The next step is the GPIO4–GPIO18 jumper with
+  `--led-gpio-mapping=adafruit-hat-pwm`, so that the hardware times the
+  pulses.
 
-## GPIO slowdown on gameclockd
+## Legacy configuration facts
 
-| `--led-slowdown-gpio` | Refresh median | Refresh 5th pct | What the panel shows |
-|---|---|---|---|
-| 0 | 159.1 Hz | 156.1 Hz | Worse: wrong colors flicker near the border |
-| 1 (default) | 146.9 Hz | 143.5 Hz | Correct pattern, random shimmer glitches |
-| 2 | 134.2 Hz | 128.2 Hz | More glitches than the default |
+- The legacy clock runs on Python 2.7 (`/usr/bin/python`). Its driver is the
+  one linked into the Python module
+  `/usr/local/lib/python2.7/dist-packages/rgbmatrix/core.so`.
+- Its `samplebase.py` sets `--led-scan-mode=1` (interlaced) by default.
+  hzeller's default, and ours, is 0 (progressive).
+- It changes brightness by time of day (60% during these measurements).
+  `gameclockd` shows 100%.
 
-The default (1) is the best of the three. Slowdown 0 is too fast for this
-panel.
+## Tuning on gameclockd
+
+Each row changes one setting from the defaults. "Glitches" compares by eye
+with the default row.
+
+| Setting | Refresh median | Refresh 5th pct | Refresh thread CPU | Glitches |
+|---|---|---|---|---|
+| Defaults | 146.9 Hz | 143.5 Hz | 52.1% | Some, mainly with the full panel lit |
+| `--led-slowdown-gpio=0` | 159.1 Hz | 156.1 Hz | not measured | Worse: wrong colors flicker near the border |
+| `--led-slowdown-gpio=2` | 134.2 Hz | 128.2 Hz | not measured | More |
+| `--led-scan-mode=1` | 147.2 Hz | 144.3 Hz | not measured | About the same |
+| `--led-pwm-bits=8` | 157.5 Hz | 154.0 Hz | 49.5% | Accepted as is |
+| Driver `a3eea99` (2023), defaults | 141.0 Hz | 136.0 Hz | 54.1% | About the same |
+
+The defaults stay. `--led-pwm-bits=8` is a candidate for the clock scene: it
+gives a higher refresh rate for less CPU. A clock needs few colors.
 
 ## On-device scenarios
 
@@ -69,6 +91,22 @@ panel.
 |---|---|
 | Test pattern on the real panel | Pass: corners, border, and bars are correct (checked by eye) |
 | Driver flags reach the driver | Pass: `--led-show-refresh` prints the refresh rate |
+| A flag overrides a default | Pass, with a different flag: `--led-slowdown-gpio=0` overrides the default of 1 and visibly changes the image. `--led-gpio-mapping=regular` was not run. |
+| Invalid flags fail at startup | Pass: `--led-rows=abc` exits 1 with a panel initialization error |
+| Rejected driver options fail cleanly | Pass: same run as above |
+| Unprivileged start warns and keeps running | Pass: the driver prints "not running as root ... Expect color degradation" and keeps running |
+| Panel is dark after stop | Pass: the panel went dark after `systemctl stop` (checked by eye) |
 | Idle daemon does not wake | Pass: 0 voluntary context switches and 0.0% CPU on the main thread in 60 s |
+| Service replaces the legacy clock | Pass: starting `gameclockd` stopped `clock.svc.service` |
+| Legacy clock is a one-command rollback | Pass: starting `clock.svc.service` stopped `gameclockd`. `scripts/deploy.sh --rollback` restored the legacy clock. |
+| Crash is restarted | Pass: systemd restarted `gameclockd` 2 s after `kill -9` |
+| Deploy installs and restarts | Pass: `scripts/deploy.sh` installed the binary and the unit, and the panel showed the pattern |
+| Plain deploy leaves boot unchanged | Partial: after the deploy, `gameclockd` was disabled and `clock.svc.service` enabled. The reboot was skipped by decision. |
+| Enable swaps the boot service | Not run: skipped by decision, because it needs two reboots of the Pi |
 | Service starts as root, driver drops privileges | Pass: the process runs as `daemon` |
-| Plain deploy leaves boot unchanged (enablement part) | Pass: `gameclockd` disabled, `clock.svc.service` enabled |
+
+## End state
+
+The legacy clock runs and is enabled at boot. `gameclockd` is installed in
+`/usr/local/bin` with its unit, stopped and disabled. `/etc/default/gameclockd`
+does not exist.

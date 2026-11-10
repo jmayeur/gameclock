@@ -6,11 +6,11 @@ This file is updated as changes land or plans shift.
 
 ## Foundation (core of driving the panel)
 
-1. **`panel-bring-up`**: `rgbmatrix-sys` FFI plus a hzeller `Panel`, the pinned
-   submodule, the `cargo-zigbuild` cross build for ARMv6 / glibc 2.28, a systemd
-   unit, and a deploy script. Exit criteria: a static test pattern on the real
-   panel, plus **baseline measurements** (CPU %, refresh Hz, RSS) for both the
-   legacy Python clock and the new daemon. Riskiest step, so it goes first.
+1. **`panel-bring-up`**: **done** (PR #4). `rgbmatrix-sys` (hzeller FFI and
+   `HzellerPanel`), the zig cross build, the systemd unit, and deploy and
+   measurement scripts. Baseline numbers for both clocks are in the change's
+   `measurements.md`. Open follow-ups: the shimmer glitches (try the GPIO4↔18
+   jumper) and the 9% refresh gap to the gcc-built legacy driver.
 2. **`dev-simulator`**: a laptop `Panel` so scenes can be seen without the Pi.
 3. **`scene-model`**: the scene contract (render, next-change deadline,
    finished), the compositor, and the event-driven loop (ADR-0006). Time is

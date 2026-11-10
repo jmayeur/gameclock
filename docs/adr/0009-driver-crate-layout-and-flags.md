@@ -99,7 +99,9 @@ Facts about the pinned upstream (`hzeller/rpi-rgb-led-matrix`
   binary size, not runtime.
 - **Fallback:** if the pinned commit misbehaves on the Zero or on Buster, pin
   the commit the legacy clock runs today (`a3eea99`, 2023-05-29) and record that
-  here.
+  here. At bring-up, our build of `a3eea99` was no better: 141 Hz against
+  147 Hz, with the same glitches (`panel-bring-up` measurements). So the pin
+  stays.
 
 ## Alternatives considered
 

@@ -27,7 +27,7 @@ changes once a minute.
   - resident memory.
 
   The first baseline is the legacy Python clock on the same Pi, taken during
-  panel bring-up. Benchmarks for the core's render functions run on the dev
+  panel bring-up (`openspec/changes/panel-bring-up/measurements.md`). Benchmarks for the core's render functions run on the dev
   machine.
 
 ## Consequences

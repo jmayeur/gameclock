@@ -68,13 +68,23 @@ SHALL win over the built-in default.
 - **THEN** it exits with a non-zero status and an error message, without driving the panel
 
 ### Requirement: Driver initialization failure is an error
-If the driver cannot be initialized (for example, insufficient privileges for
-GPIO access), creating the panel SHALL return an error describing the failure
-rather than panicking or continuing without a panel.
+If the driver cannot create the matrix, creating the panel SHALL return an
+error that mentions panel initialization. The daemon SHALL NOT panic or
+continue without a panel.
 
-#### Scenario: Unprivileged start fails cleanly (on-device)
-- **WHEN** `gameclockd` built with the hzeller panel is started as a non-root user on the Pi
+#### Scenario: Rejected driver options fail cleanly (on-device)
+- **WHEN** `gameclockd` built with the hzeller panel is started with `--led-rows=abc`
 - **THEN** it exits with a non-zero status and an error that mentions panel initialization
+
+### Requirement: A non-root start runs degraded with a warning
+The service starts as root. A manual start as a non-root user SHALL show the
+driver's warning that timing is degraded, and SHALL keep running. The driver
+falls back to user-space GPIO access in that case.
+
+#### Scenario: Unprivileged start warns and keeps running (on-device)
+- **WHEN** `gameclockd` built with the hzeller panel is started as a non-root user on the Pi
+- **THEN** standard error contains the driver's warning that it is not running as root
+- **AND** the process keeps running until it is stopped
 
 ### Requirement: Shutdown blanks the panel and releases the driver
 Dropping the panel SHALL clear the display and stop the driver's refresh thread
