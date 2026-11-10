@@ -1,0 +1,44 @@
+# cargo-deny policy. CI runs `cargo deny check`.
+# Why this matters: the daemon links hzeller's GPL-2.0-only driver, so every
+# Rust dependency must be GPL-2.0-compatible (docs/adr/0003).
+
+[graph]
+all-features = true
+
+[licenses]
+# GPL-2.0-compatible licenses only. Notably absent:
+#  - Apache-2.0 (incompatible with GPL-2.0; "MIT OR Apache-2.0" passes via MIT)
+#  - GPL-3.0 / AGPL-3.0 / LGPL-3.0 (incompatible with GPL-2.0-only)
+#  - MPL-2.0 (only GPL-compatible with caveats; review case by case)
+allow = [
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unlicense",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+confidence-threshold = 0.9
+# The allow list is policy, not an inventory: some entries may be unused today.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Our own unpublished crates are GPL-2.0-or-later (workspace.package.license).
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Internal path dependencies between our unpublished crates are not wildcards.
+allow-wildcard-paths = true
+
+[advisories]
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

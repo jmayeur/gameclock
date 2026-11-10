@@ -1,0 +1,25 @@
+# Glossary
+
+- **Frame**: in-memory 64×32 RGB buffer that everything renders into (an
+  `embedded-graphics` `DrawTarget`).
+- **Panel**: anything that can display a `Frame` at a `Brightness`: the hzeller
+  driver, a simulator, a test recorder. Panels only blit pixels.
+- **Scene** *(planned)*: a self-contained display behavior (clock, message,
+  alert) that renders frames from its own state plus injected time and input.
+- **Compositor** *(planned)*: decides which scene or scenes are visible and
+  handles priorities and transitions. The only component that knows about more
+  than one scene.
+- **Render on change**: the daemon presents a frame only when it differs from
+  the last one, and sleeps until the next scheduled change (ADR-0006).
+- **hzeller**: Henner Zeller's `rpi-rgb-led-matrix`, the GPL-2.0-only C++ driver
+  that clocks pixels out to the panel and runs its own refresh thread.
+- **Refresh thread**: hzeller's thread that continuously scans the panel. On the
+  single-core Zero it competes with the app for CPU, and starving it causes
+  flicker.
+- **HAT / mapping**: the Adafruit RGB Matrix HAT and the GPIO pin mapping it
+  needs (`adafruit-hat`).
+- **Hardware pulse**: hzeller's use of the Pi's PWM peripheral for output-enable
+  timing. Better image quality, but it conflicts with onboard audio (disabled on
+  this Pi).
+- **Semaphore file**: the legacy command channel (`msg.txt` holding
+  `msg=<value>`).

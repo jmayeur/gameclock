@@ -1,0 +1,29 @@
+# Architecture Decision Records
+
+One file per significant decision: the context, what we chose, and what it
+costs. See `CLAUDE.md` for when an ADR is required.
+
+## Lifecycle
+
+`Proposed` → `Accepted` → `Superseded by ADR-NNNN` or `Deprecated`.
+
+ADRs are append-only. To change a decision, add a new ADR and update the old
+one's status line. Small clarifications to an accepted ADR are fine.
+
+## Template
+
+Copy [`template.md`](template.md) to `NNNN-short-title.md` (next free number,
+zero-padded) and add it to the index below.
+
+## Index
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [0001](0001-record-decisions.md) | Record decisions as ADRs; keep design docs current | Accepted |
+| [0002](0002-rust.md) | Write the daemon in Rust | Accepted |
+| [0003](0003-license-gpl-2.0-or-later.md) | License as GPL-2.0-or-later | Accepted |
+| [0004](0004-panel-driver-hzeller-ffi.md) | Drive the panel with hzeller's library via our own FFI | Accepted |
+| [0005](0005-pure-core-frame-panel.md) | Pure core renders frames; panels only blit | Accepted |
+| [0006](0006-render-on-change.md) | Render on change, within a measured CPU budget | Accepted |
+| [0007](0007-target-and-cross-compilation.md) | Target ARMv6 / glibc 2.28, cross-compile with cargo-zigbuild | Accepted |
+| [0008](0008-openspec.md) | Drive features with OpenSpec | Accepted |

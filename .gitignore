@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+
+# Binaries ship from this repo, so Cargo.lock IS committed.
+
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+.env
+.env.*
+!.env.example

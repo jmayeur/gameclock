@@ -1,0 +1,17 @@
+[package]
+name = "gameclock-core"
+description = "Hardware-free game clock logic: frames, scenes, scheduling. No I/O."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Invariant (docs/adr/0005): no hardware, no I/O, no clocks, no threads here.
+# Anything that would break that belongs in gameclockd or a driver crate.
+[dependencies]
+embedded-graphics.workspace = true
+
+[lints]
+workspace = true

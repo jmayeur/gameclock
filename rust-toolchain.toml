@@ -1,0 +1,6 @@
+# Pinned for reproducible builds; bump deliberately (and note it in CHANGELOG).
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+# Raspberry Pi Zero W: ARM1176JZF-S (ARMv6, hard-float). See docs/adr/0007.
+targets = ["arm-unknown-linux-gnueabihf"]
