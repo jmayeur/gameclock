@@ -53,7 +53,13 @@ fn main() -> ExitCode {
         };
         // Each wait blocks in a read on the signal pipe, with a timeout until
         // the next scene change. No extra thread (docs/adr/0013).
-        run(&mut panel, args.mode.base_scene(), &clock, &mut wait)
+        run(
+            &mut panel,
+            args.mode.base_scene(),
+            args.mode,
+            &clock,
+            &mut wait,
+        )
         // The panel drops here, before the report and the exit. The hzeller
         // driver stops its refresh thread and blanks the LEDs.
     };

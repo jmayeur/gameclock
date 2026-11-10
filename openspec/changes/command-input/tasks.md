@@ -16,8 +16,8 @@
 
 ## 4. Event channel and loop (`daemon-lifecycle`, `command-input`)
 
-- [ ] 4.1 Red: change the `run` tests to a scripted wait that can give `Wake::Command`. Write tests for "A command ends the wait", "Switch to the test pattern", "Switch back to the clock", and "Same mode does not present". Also write "Status of the clock" and "Status of the test pattern". Verify that each reply comes after the present. See them fail because `Wake::Command` does not exist.
-- [ ] 4.2 Green: add `Event`, `Request`, `Wake::Command`, and the command handling in `run` (D1, D5). Verify that the 4.1 tests and all earlier `run` tests pass.
+- [x] 4.1 Red: change the `run` tests to a scripted wait that can give `Wake::Command`. Write tests for "A command ends the wait", "Switch to the test pattern", "Switch back to the clock", and "Same mode does not present". Also write "Status of the clock" and "Status of the test pattern". Verify that each reply comes after the present. See them fail because `Wake::Command` does not exist.
+- [x] 4.2 Green: add `Event`, `Request`, `Wake::Command`, and the command handling in `run` (D1, D5). Verify that the 4.1 tests and all earlier `run` tests pass.
 - [ ] 4.3 Red: write `ChannelWait` tests. A past deadline gives `Deadline` at once. A 50 ms deadline gives `Deadline` after 50 ms or more. A `Shutdown` event gives `Shutdown`. A request gives `Command`. A closed channel gives `Shutdown`. See them fail because `ChannelWait` does not exist.
 - [ ] 4.4 Green: add `ChannelWait`. Remove `SignalWait` and its tests. Verify that the 4.3 tests pass.
 

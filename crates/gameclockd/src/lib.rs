@@ -4,12 +4,15 @@
 use core::fmt;
 use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
+use std::sync::mpsc;
 use std::time::Duration;
 
 #[cfg(feature = "simulator")]
 pub mod sim;
 
 pub mod command;
+
+use command::{Command, OK, status_reply};
 
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
@@ -63,19 +66,40 @@ impl Clock for SystemClock {
     }
 }
 
+/// A command and the sender for its reply line (docs/adr/0016).
+#[derive(Debug)]
+pub struct Request {
+    /// The parsed command.
+    pub command: Command,
+    /// The loop sends the reply line here.
+    pub reply: mpsc::Sender<String>,
+}
+
+/// An event for the loop: from the signal thread or the socket thread.
+#[derive(Debug)]
+pub enum Event {
+    /// A stop signal came.
+    Shutdown,
+    /// A command came.
+    Command(Request),
+}
+
 /// Why a wait ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Wake {
     /// The deadline came, or the wait ended early. Render again.
     Deadline,
     /// A stop signal came. Stop the daemon.
     Shutdown,
+    /// A command came. Do it and reply.
+    Command(Request),
 }
 
-/// Blocks until a deadline or a stop signal.
+/// Blocks until a deadline, a command, or a stop signal.
 pub trait Wait {
-    /// Block until `deadline` or a stop signal. `now` is the time when the
-    /// wait starts. With no deadline, block until a stop signal.
+    /// Block until `deadline`, a command, or a stop signal. `now` is the time
+    /// when the wait starts. With no deadline, block until a command or a
+    /// stop signal.
     fn wait(&mut self, deadline: Option<Timestamp>, now: Timestamp) -> Wake;
 }
 
@@ -159,14 +183,16 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 ///
 /// The loop renders `base` for the current time and presents each changed
 /// frame on `panel` at the brightness of the top scene. Then it waits until
-/// the next scene
-/// change. It does not wake at other times.
+/// the next scene change or an event. It does not wake at other times. A
+/// command runs at once, and its reply goes back on its sender. `mode` is
+/// the mode of `base`, for `status`.
 ///
 /// # Errors
 /// [`RunError::Present`] if the panel fails to show a frame.
 pub fn run<P: Panel>(
     panel: &mut P,
     base: Box<dyn Scene>,
+    mut mode: Mode,
     clock: &impl Clock,
     wait: &mut impl Wait,
 ) -> Result<(), RunError<P::Error>> {
@@ -182,6 +208,29 @@ pub fn run<P: Panel>(
         match wait.wait(compositor.deadline(&now), now.timestamp()) {
             Wake::Deadline => {}
             Wake::Shutdown => return Ok(()),
+            Wake::Command(Request { command, reply }) => {
+                let text = match command {
+                    Command::Mode(next) => {
+                        if next != mode {
+                            mode = next;
+                            compositor.set_base(next.base_scene());
+                            // Show the new scene before the reply.
+                            let now = clock.now();
+                            if let Some((frame, brightness)) = compositor.update(&now) {
+                                panel
+                                    .present(frame, brightness)
+                                    .map_err(RunError::Present)?;
+                            }
+                        }
+                        OK.to_owned()
+                    }
+                    Command::Status => {
+                        status_reply(mode, clock.now().time_zone(), compositor.last_brightness())
+                    }
+                };
+                // The client can be gone. That is not an error of the loop.
+                let _ = reply.send(text);
+            }
         }
     }
 }
@@ -328,6 +377,9 @@ mod tests {
     use core::convert::Infallible;
     use std::collections::VecDeque;
     use std::rc::Rc;
+    use std::sync::mpsc;
+
+    use crate::command::{Command, OK};
 
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::embedded_graphics::prelude::*;
@@ -397,12 +449,15 @@ mod tests {
     }
 
     /// One scripted end of a wait.
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug)]
     enum Step {
         /// The time moves to the deadline, and the wait ends.
         Deadline,
         /// The time moves to this time, and the wait ends before the deadline.
         EarlyAt(&'static str),
+        /// The time moves to this time, and this command arrives. The reply
+        /// goes to the sender.
+        CommandAt(&'static str, Command, mpsc::Sender<String>),
     }
 
     /// A wait that follows a script and records each deadline. After the last
@@ -427,6 +482,10 @@ mod tests {
                     self.now.set(ts(t));
                     Wake::Deadline
                 }
+                Some(Step::CommandAt(t, command, reply)) => {
+                    self.now.set(ts(t));
+                    Wake::Command(Request { command, reply })
+                }
             }
         }
     }
@@ -437,11 +496,11 @@ mod tests {
 
     const START: &str = "1970-01-01T00:00:00.250Z";
 
-    fn script(start: &str, steps: &[Step]) -> (FakeClock, ScriptedWait) {
+    fn script(start: &str, steps: impl IntoIterator<Item = Step>) -> (FakeClock, ScriptedWait) {
         let now = Rc::new(Cell::new(ts(start)));
         let wait = ScriptedWait {
             now: Rc::clone(&now),
-            steps: steps.iter().copied().collect(),
+            steps: steps.into_iter().collect(),
             deadlines: Vec::new(),
         };
         (FakeClock(now), wait)
@@ -449,10 +508,16 @@ mod tests {
 
     fn run_heartbeat<P: Panel>(
         panel: &mut P,
-        steps: &[Step],
+        steps: impl IntoIterator<Item = Step>,
     ) -> (Result<(), RunError<P::Error>>, ScriptedWait) {
         let (clock, mut wait) = script(START, steps);
-        let result = run(panel, Box::new(Heartbeat), &clock, &mut wait);
+        let result = run(
+            panel,
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            &clock,
+            &mut wait,
+        );
         (result, wait)
     }
 
@@ -597,8 +662,8 @@ mod tests {
     #[test]
     fn one_present_at_startup() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[]);
-        run(&mut panel, legacy_clock(), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, []);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
         assert_eq!(panel.presents.len(), 1);
         let (frame, brightness) = &panel.presents[0];
         assert_eq!(*frame, clock_frame(64, 32, START));
@@ -608,7 +673,7 @@ mod tests {
     #[test]
     fn heartbeat_presents_at_full_brightness() {
         let mut panel = Recorder::new(64, 32);
-        run_heartbeat(&mut panel, &[]).0.unwrap();
+        run_heartbeat(&mut panel, []).0.unwrap();
         assert_eq!(panel.presents[0].0, heartbeat_frame(64, 32, START));
         assert_eq!(panel.presents[0].1, Brightness::MAX);
     }
@@ -616,8 +681,15 @@ mod tests {
     #[test]
     fn brightness_of_the_base_scene() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[]);
-        run(&mut panel, Box::new(Dim { after: 25 }), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, []);
+        run(
+            &mut panel,
+            Box::new(Dim { after: 25 }),
+            Mode::Clock,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.presents.len(), 1);
         assert_eq!(panel.presents[0].1, Brightness::new(25));
     }
@@ -625,8 +697,15 @@ mod tests {
     #[test]
     fn brightness_change_presents_the_same_image() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[Step::Deadline]);
-        run(&mut panel, Box::new(Dim { after: 60 }), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, [Step::Deadline]);
+        run(
+            &mut panel,
+            Box::new(Dim { after: 60 }),
+            Mode::Clock,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.presents.len(), 2);
         assert_eq!(panel.presents[0].0, panel.presents[1].0);
         let levels: Vec<_> = panel.presents.iter().map(|(_, b)| b.percent()).collect();
@@ -636,31 +715,160 @@ mod tests {
     #[test]
     fn frame_follows_the_panels_size() {
         let mut panel = Recorder::new(32, 16);
-        run_heartbeat(&mut panel, &[]).0.unwrap();
+        run_heartbeat(&mut panel, []).0.unwrap();
         assert_eq!(panel.presents.len(), 1);
         assert_eq!(panel.presents[0].0, heartbeat_frame(32, 16, START));
     }
 
     #[test]
     fn wait_ends_at_the_scene_deadline() {
-        let (_, wait) = run_heartbeat(&mut Recorder::new(64, 32), &[]);
+        let (_, wait) = run_heartbeat(&mut Recorder::new(64, 32), []);
         assert_eq!(wait.deadlines[0], Some(ts("1970-01-01T00:00:01Z")));
     }
 
     #[test]
     fn static_scene_waits_with_no_timeout() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[]);
-        run(&mut panel, Box::new(Red), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, []);
+        run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
         assert_eq!(wait.deadlines, vec![None]);
         assert_eq!(panel.presents.len(), 1);
+    }
+
+    // Commands (openspec/specs/command-input).
+
+    /// Run `base` in `mode` with one command at `at`. Give the presents and
+    /// the reply.
+    fn run_command(
+        base: Box<dyn Scene>,
+        mode: Mode,
+        at: &'static str,
+        command: Command,
+    ) -> (Recorder, ScriptedWait, String) {
+        let mut panel = Recorder::new(64, 32);
+        let (tx, rx) = mpsc::channel();
+        let (clock, mut wait) = script(START, [Step::CommandAt(at, command, tx)]);
+        run(&mut panel, base, mode, &clock, &mut wait).unwrap();
+        let reply = rx.try_recv().expect("a reply");
+        (panel, wait, reply)
+    }
+
+    #[test]
+    fn a_command_ends_the_wait() {
+        let (panel, wait, reply) = run_command(
+            Box::new(Red),
+            Mode::Clock,
+            "1970-01-01T00:00:00.500Z",
+            Command::Status,
+        );
+        assert!(reply.starts_with("ok"), "{reply}");
+        assert_eq!(wait.deadlines, vec![None, None]);
+        assert_eq!(panel.presents.len(), 1);
+    }
+
+    #[test]
+    fn switch_to_the_test_pattern() {
+        let at = "1970-01-01T00:00:00.500Z";
+        let (panel, _, reply) = run_command(
+            legacy_clock(),
+            Mode::Clock,
+            at,
+            Command::Mode(Mode::TestPattern),
+        );
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 2);
+        assert_eq!(panel.presents[1].0, heartbeat_frame(64, 32, at));
+        assert_eq!(panel.presents[1].1, Brightness::MAX);
+    }
+
+    #[test]
+    fn switch_back_to_the_clock() {
+        let at = "1970-01-01T00:00:00.500Z";
+        let (panel, _, reply) = run_command(
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            at,
+            Command::Mode(Mode::Clock),
+        );
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 2);
+        assert_eq!(panel.presents[1].0, clock_frame(64, 32, at));
+        assert_eq!(panel.presents[1].1, Brightness::new(25));
+    }
+
+    #[test]
+    fn same_mode_does_not_present() {
+        let (panel, _, reply) = run_command(
+            legacy_clock(),
+            Mode::Clock,
+            "1970-01-01T00:00:00.500Z",
+            Command::Mode(Mode::Clock),
+        );
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 1);
+    }
+
+    #[test]
+    fn status_of_the_clock() {
+        let (_, _, reply) = run_command(legacy_clock(), Mode::Clock, START, Command::Status);
+        assert_eq!(reply, "ok mode=clock zone=UTC brightness=25");
+    }
+
+    #[test]
+    fn status_of_the_test_pattern() {
+        let (_, _, reply) = run_command(
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            START,
+            Command::Status,
+        );
+        assert_eq!(reply, "ok mode=test-pattern zone=UTC brightness=100");
+    }
+
+    /// Records, at each present, whether a reply was already sent.
+    struct ReplyWatch {
+        inner: Recorder,
+        replies: Rc<mpsc::Receiver<String>>,
+        reply_before_present: Vec<bool>,
+    }
+
+    impl Panel for ReplyWatch {
+        type Error = Infallible;
+        fn dimensions(&self) -> (usize, usize) {
+            self.inner.dimensions()
+        }
+        fn present(&mut self, frame: &Frame, brightness: Brightness) -> Result<(), Infallible> {
+            self.reply_before_present
+                .push(self.replies.try_recv().is_ok());
+            self.inner.present(frame, brightness)
+        }
+    }
+
+    #[test]
+    fn the_reply_comes_after_the_present() {
+        let (tx, rx) = mpsc::channel();
+        let replies = Rc::new(rx);
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::clone(&replies),
+            reply_before_present: Vec::new(),
+        };
+        let step = Step::CommandAt(
+            "1970-01-01T00:00:00.500Z",
+            Command::Mode(Mode::TestPattern),
+            tx,
+        );
+        let (clock, mut wait) = script(START, [step]);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        assert_eq!(panel.reply_before_present, vec![false, false]);
+        assert_eq!(replies.try_recv().as_deref(), Ok(OK));
     }
 
     #[test]
     fn heartbeat_presents_each_second() {
         let mut panel = Recorder::new(64, 32);
         let steps = [Step::Deadline, Step::Deadline, Step::Deadline];
-        run_heartbeat(&mut panel, &steps).0.unwrap();
+        run_heartbeat(&mut panel, steps).0.unwrap();
         let columns: Vec<_> = panel
             .presents
             .iter()
@@ -673,7 +881,7 @@ mod tests {
     fn early_wake_does_not_present() {
         let mut panel = Recorder::new(64, 32);
         let steps = [Step::EarlyAt("1970-01-01T00:00:00.900Z")];
-        let (result, wait) = run_heartbeat(&mut panel, &steps);
+        let (result, wait) = run_heartbeat(&mut panel, steps);
         result.unwrap();
         assert_eq!(panel.presents.len(), 1);
         let second = ts("1970-01-01T00:00:01Z");
@@ -682,7 +890,7 @@ mod tests {
 
     #[test]
     fn messages_are_exact() {
-        let err = run_heartbeat(&mut Broken, &[]).0.unwrap_err();
+        let err = run_heartbeat(&mut Broken, []).0.unwrap_err();
         assert_eq!(
             err.to_string(),
             "the panel did not show the frame: the LEDs are on fire"
@@ -695,7 +903,7 @@ mod tests {
 
     #[test]
     fn present_failure_is_reported_and_exits_non_zero() {
-        let (result, _) = run_heartbeat(&mut Broken, &[]);
+        let (result, _) = run_heartbeat(&mut Broken, []);
         let err = result.as_ref().unwrap_err();
         assert!(
             err.to_string().contains("the LEDs are on fire"),
@@ -706,7 +914,7 @@ mod tests {
 
     #[test]
     fn success_exits_zero() {
-        let (result, _) = run_heartbeat(&mut Recorder::new(64, 32), &[]);
+        let (result, _) = run_heartbeat(&mut Recorder::new(64, 32), []);
         assert_eq!(exit_status(&result), 0);
     }
 
@@ -732,7 +940,7 @@ mod tests {
             let (mut wait, _write) = pair();
             let (deadline, now) = now_plus(-10);
             let start = Instant::now();
-            assert_eq!(wait.wait(deadline, now), Wake::Deadline);
+            assert!(matches!(wait.wait(deadline, now), Wake::Deadline));
             assert!(start.elapsed() < Duration::from_millis(20));
         }
 
@@ -741,7 +949,7 @@ mod tests {
             let (mut wait, _write) = pair();
             let (deadline, now) = now_plus(50);
             let start = Instant::now();
-            assert_eq!(wait.wait(deadline, now), Wake::Deadline);
+            assert!(matches!(wait.wait(deadline, now), Wake::Deadline));
             assert!(
                 start.elapsed() >= Duration::from_millis(50),
                 "{:?}",
@@ -754,14 +962,14 @@ mod tests {
             let (mut wait, mut write) = pair();
             write.write_all(&[1]).unwrap();
             let (deadline, now) = now_plus(5_000);
-            assert_eq!(wait.wait(deadline, now), Wake::Shutdown);
+            assert!(matches!(wait.wait(deadline, now), Wake::Shutdown));
         }
 
         #[test]
         fn closed_pipe_is_a_shutdown() {
             let (mut wait, write) = pair();
             drop(write);
-            assert_eq!(wait.wait(None, Timestamp::now()), Wake::Shutdown);
+            assert!(matches!(wait.wait(None, Timestamp::now()), Wake::Shutdown));
         }
 
         #[test]
@@ -774,7 +982,7 @@ mod tests {
                 write.write_all(&[1]).unwrap();
             });
             let start = Instant::now();
-            run(&mut panel, Box::new(Red), &clock, &mut wait).unwrap();
+            run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
             assert!(
                 start.elapsed() >= Duration::from_millis(500),
                 "run must wait"
