@@ -67,7 +67,7 @@ fn whole_second(t: Timestamp) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Frame, Scene, test_pattern};
+    use crate::{Brightness, Frame, Scene, test_pattern};
     use embedded_graphics::pixelcolor::Rgb888;
     use jiff::Timestamp;
     use jiff::tz::TimeZone;
@@ -151,6 +151,17 @@ mod tests {
     fn never_finished() {
         for time in ["1970-01-01T00:00:00Z", "2026-01-01T12:00:00Z"] {
             assert!(!Heartbeat.is_finished(&at(time)));
+        }
+    }
+
+    #[test]
+    fn full_brightness_at_each_time() {
+        for time in ["1970-01-01T00:00:00Z", "2026-11-10T23:05:00Z"] {
+            assert_eq!(
+                Heartbeat.brightness(&at(time)),
+                Brightness::MAX,
+                "at {time}"
+            );
         }
     }
 

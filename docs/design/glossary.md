@@ -29,8 +29,21 @@
 - **Deadline**: the time of the next render. The compositor gives the top
   scene's next change, at least 33 ms after the update. The daemon waits
   until the deadline or a stop signal.
-- **Heartbeat**: the temporary base scene. It is the test pattern with one
-  white pixel that moves one column each second on row 1.
+- **Heartbeat**: the base scene in the test-pattern mode. It is the test
+  pattern with one white pixel that moves one column each second on row 1.
+- **Test-pattern mode**: `gameclockd --test-pattern`. The daemon shows the
+  heartbeat instead of the clock, to check the panel.
+- **Clock scene**: the base scene. It shows the local time as `09:05PM` in
+  the color and brightness of the schedule.
+- **Schedule**: the list of rules that gives the clock's style for each local
+  time (ADR-0014). It is data, not code.
+- **Rule**: one period of the schedule. It has a start and an end time of day
+  in whole minutes, a set of weekdays, and a style. The first rule that
+  matches gives the style.
+- **Style**: a text color and a panel brightness.
+- **Bedtime night**: a night before a school day, Sunday to Thursday. The
+  legacy schedule uses brightness 100 from 23:00 to 23:14 on these nights.
+- **Mellow**: the clock's evening color, (255,140,0).
 - **Render on change**: the daemon presents a frame only when it differs from
   the last one, and sleeps until the next scheduled change (ADR-0006).
 - **hzeller**: Henner Zeller's `rpi-rgb-led-matrix`, the GPL-2.0-only C++ driver
@@ -39,9 +52,10 @@
   single-core Zero it competes with the app for CPU, and starving it causes
   flicker.
 - **HAT / mapping**: the Adafruit RGB Matrix HAT and the GPIO pin mapping it
-  needs (`adafruit-hat`).
+  needs (`adafruit-hat-pwm`, ADR-0015).
 - **Hardware pulse**: hzeller's use of the Pi's PWM peripheral for output-enable
   timing. Better image quality, but it conflicts with onboard audio (disabled on
-  this Pi).
+  this Pi). The `adafruit-hat-pwm` mapping uses it through the GPIO4–18 link on
+  the HAT.
 - **Semaphore file**: the legacy command channel (`msg.txt` holding
   `msg=<value>`).

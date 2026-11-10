@@ -53,9 +53,10 @@ reports that it is finished.
 - **THEN** the result frame is all red
 
 ### Requirement: Only a changed frame is presented
-An update SHALL give a frame to present only when the rendered frame is
-different from the last frame that the compositor gave. The first update SHALL
-always give a frame.
+An update SHALL give a frame to present only when the image or the
+brightness changed. The image changed when the rendered frame is different
+from the last frame that the compositor gave. The same rule applies to the
+brightness. The first update SHALL always give a frame.
 
 #### Scenario: First update gives a frame
 - **WHEN** a new compositor with a red base scene is updated
@@ -68,6 +69,12 @@ always give a frame.
 #### Scenario: Changed image gives a frame
 - **WHEN** a compositor with a base scene that is red before 12:00:01 UTC and blue after it is updated at 12:00:00 and at 12:00:01 UTC
 - **THEN** each of the two updates gives a frame, and the second frame is all blue
+
+#### Scenario: Changed brightness gives a frame
+- **WHEN** a red base scene is at brightness 25 before 12:00:01 UTC and 60 after it
+- **AND** the compositor is updated at 12:00:00 and at 12:00:01 UTC
+- **THEN** each of the two updates gives a frame
+- **AND** the second update gives the brightness 60
 
 ### Requirement: The deadline is the top scene's next change
 After an update, the compositor SHALL give the top scene's next change time as
@@ -111,3 +118,16 @@ scene stack does not change.
 #### Scenario: One thousand updates allocate nothing
 - **WHEN** a compositor with the heartbeat scene is updated once, and then 1000 more times with the time 1 s later each time
 - **THEN** the 1000 updates make zero heap allocations
+
+### Requirement: Scenes give a brightness
+A scene SHALL give a brightness for each time. A scene that does not set one
+SHALL give full brightness. Each update of the compositor SHALL give the top
+scene's brightness for the update time.
+
+#### Scenario: Default brightness is full
+- **WHEN** a compositor with a red base scene that does not set a brightness is updated
+- **THEN** the compositor gives the brightness 100
+
+#### Scenario: Brightness of the top scene
+- **WHEN** a base scene at brightness 25 has a foreground scene at brightness 80, and the compositor is updated
+- **THEN** the compositor gives the brightness 80

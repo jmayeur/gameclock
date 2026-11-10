@@ -22,13 +22,15 @@ pub struct Defaults {
     pub hardware_mapping: &'static CStr,
 }
 
-/// A single 64×32 panel on the Adafruit RGB Matrix HAT.
+/// A single 64×32 panel on the Adafruit RGB Matrix HAT. The PWM mapping
+/// drives output enable from the hardware pulse on GPIO18. This HAT has the
+/// GPIO4-18 link (docs/adr/0015).
 pub const DEFAULTS: Defaults = Defaults {
     cols: 64,
     rows: 32,
     chain_length: 1,
     parallel: 1,
-    hardware_mapping: c"adafruit-hat",
+    hardware_mapping: c"adafruit-hat-pwm",
 };
 
 #[cfg(test)]
@@ -41,6 +43,6 @@ mod tests {
         assert_eq!(DEFAULTS.rows, 32);
         assert_eq!(DEFAULTS.chain_length, 1);
         assert_eq!(DEFAULTS.parallel, 1);
-        assert_eq!(DEFAULTS.hardware_mapping, c"adafruit-hat");
+        assert_eq!(DEFAULTS.hardware_mapping, c"adafruit-hat-pwm");
     }
 }

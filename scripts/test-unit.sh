@@ -18,7 +18,8 @@ fi
 has "Conflicts=clock.svc.service"
 has "Restart=on-failure"
 has "EnvironmentFile=-/etc/default/gameclockd"
-has "ExecStart=/usr/local/bin/gameclockd \$GAMECLOCKD_ARGS"
+# 8 PWM bits first. A later flag from GAMECLOCKD_ARGS wins (ADR-0015).
+has "ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 \$GAMECLOCKD_ARGS"
 has "WantedBy=multi-user.target"
 grep -q "^User=" "$unit" && fail "$unit sets User=; the driver needs root to start (ADR-0010)"
 

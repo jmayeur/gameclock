@@ -4,9 +4,9 @@ A clock and message board for a 64×32 RGB LED matrix. A Raspberry Pi Zero W
 drives the matrix through an Adafruit RGB Matrix HAT. The code is Rust, tuned
 for one ARMv6 core.
 
-> **Status:** the daemon drives the real panel. It shows a test pattern with
-> a marker that moves each second, through the scene model. The
-> clock and other features come next, one at a time, through
+> **Status:** the daemon drives the real panel. It shows the clock, with the
+> legacy colors and brightness for each time of day. Messages and alerts come
+> next, one at a time, through
 > [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
 

@@ -179,6 +179,22 @@ mod log_panel {
     }
 
     #[test]
+    fn host_build_names_the_clock() {
+        let mut d = Daemon::spawn(&[]);
+        d.wait_for(READY);
+        let line = "gameclockd: the base scene is the clock.";
+        assert!(d.seen.iter().any(|l| l == line), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
+    fn host_build_names_the_test_pattern() {
+        let mut d = Daemon::spawn(&["--test-pattern"]);
+        d.wait_for(READY);
+        let line = "gameclockd: the base scene is the test pattern.";
+        assert!(d.seen.iter().any(|l| l == line), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
     fn driver_flags_are_ignored_without_the_driver() {
         let mut d = Daemon::spawn(&["--led-pwm-bits=7"]);
         d.wait_for(READY);
@@ -204,8 +220,9 @@ mod simulator {
         let status = d.exit_within(Duration::from_secs(1));
         assert_eq!(status.code(), Some(0), "exit status after SIGTERM");
         let out = d.stdout();
-        // The heartbeat can present more than one frame. Each frame starts
-        // with the cursor-home sequence. Check the last frame.
+        // The clock can present more than one frame, for example at a new
+        // minute. Each frame starts with the cursor-home sequence. Check the
+        // last frame.
         let last = out.rsplit("\x1b[H").next().unwrap_or_default();
         let rows: Vec<&str> = last.lines().filter(|l| l.contains('▀')).collect();
         assert_eq!(rows.len(), 16, "stdout: {out:?}");

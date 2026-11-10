@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
-- **Related:** ADR-0005, ADR-0006, ADR-0013. OpenSpec change `scene-model`.
+- **Related:** ADR-0005, ADR-0006, ADR-0013, ADR-0014. OpenSpec change `scene-model`.
 
 ## Context
 

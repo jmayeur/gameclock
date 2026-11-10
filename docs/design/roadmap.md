@@ -10,18 +10,19 @@ and scope can change. Update this file when a change merges or a plan changes.
    `HzellerPanel`), the zig cross build, the systemd unit, and the deploy and
    measurement scripts. The baseline numbers for both clocks are in
    `openspec/changes/archive/2026-11-09-panel-bring-up/measurements.md`. Open
-   items: the shimmer glitches (try the GPIO4↔18 jumper) and the 9% refresh
-   gap to the legacy driver, which gcc built.
+   items: the 9% refresh gap to the legacy driver, which gcc built. The
+   shimmer glitches were fixed in `clock-scene`.
 2. **`dev-simulator`**: **done**. `TerminalPanel` draws frames in the terminal
    (`cargo sim`), so you can see scenes without the Pi. A window and PNG
    snapshots are not planned.
 3. **`scene-model`**: **done**. The `Scene` contract, the `Compositor`, and
    the event-driven loop (ADR-0012, ADR-0013). The daemon injects a `jiff`
-   time in the system time zone. The `Heartbeat` scene is the base scene
-   until the clock scene replaces it.
-4. **`clock-scene`**: the clock face. The time-of-day color and brightness
-   schedule is data, not hardcoded hours. The legacy rules are the defaults.
-   Consider `--led-pwm-bits=8` (measured at bring-up).
+   time in the system time zone.
+4. **`clock-scene`**: **done**. The clock face in the legacy format, and the
+   time-of-day schedule as data with the legacy rules as the default
+   (ADR-0014). Scenes give a brightness. The heartbeat stays as
+   `--test-pattern`. The `adafruit-hat-pwm` mapping and 8 PWM bits remove
+   the moving lines and raise the refresh rate to 176 Hz (ADR-0015).
 
 ## Messages and alerts
 

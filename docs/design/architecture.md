@@ -1,6 +1,6 @@
 # Architecture
 
-> The state after `scene-model`. Sections marked **Planned** give the agreed
+> The state after `clock-scene`. Sections marked **Planned** give the agreed
 > direction (ADRs 0004–0006). They become current as OpenSpec changes merge.
 
 ## Shape
@@ -22,14 +22,16 @@
 - **`gameclock-core`** (exists): pure logic. It has no hardware, I/O, threads,
   or wall clock (ADR-0005). It holds `Frame`, the `Panel` trait,
   `Brightness`, the diagnostic `test_pattern`, the `Scene` trait, the
-  `Compositor`, and the `Heartbeat` scene (ADR-0012). Time comes in as a
-  `jiff::Zoned` (ADR-0013).
+  `Compositor`, the `Clock` and `Heartbeat` scenes (ADR-0012), and the
+  time-of-day `schedule` (ADR-0014). Time comes in as a `jiff::Zoned`
+  (ADR-0013).
 - **`gameclockd`** (exists): the daemon. It checks arguments, handles signals,
   reads the time zone, selects the panel by build feature, and runs the event
   loop below. Planned: config and command input.
 - **`rgbmatrix-sys`** (exists): the LED driver, and the only crate with
   `unsafe` (ADR-0004, ADR-0009).
-  - Always: the Pi driver defaults (`options`), the conversion from a frame to
+  - Always: the Pi driver defaults (`options`: 64×32, chain 1, parallel 1,
+    and the `adafruit-hat-pwm` mapping, ADR-0015), the conversion from a frame to
     the driver buffer (`convert`), and `Error`. Tests run on any host.
   - With the `link` feature: `build.rs` compiles hzeller from the
     `vendor/rpi-rgb-led-matrix` submodule with zig. The crate adds the
@@ -67,15 +69,26 @@
 - **`Scene`** (ADR-0012): `render(now, frame)` draws into a black frame.
   `next_change(now)` gives the next time the image can change, or `None`.
   `is_finished(now)` tells when the scene has nothing more to show.
+  `brightness(now)` gives the panel brightness, full by default (ADR-0014).
 - **`Compositor`** (ADR-0012): one base scene and a stack of foreground
   scenes. `update(now)` removes finished foreground scenes and renders the
-  top scene into a preallocated frame. It gives the frame only if it differs
-  from the last one. `deadline(now)` gives the top scene's next change, at
+  top scene into a preallocated frame. It gives the frame and the top
+  scene's brightness only if one of them differs from the last ones. `deadline(now)` gives the top scene's next change, at
   least 33 ms after `now` (30 renders each second at most). Updates allocate
   no heap memory. A test in `gameclock-core/tests/no_alloc.rs` checks this.
-- **`Heartbeat`**: the base scene for now. It is the test pattern with one
-  white pixel on row 1. The pixel moves one column each second. The clock
-  scene will replace it.
+- **`Clock`** (`gameclock_core::clock`): the base scene. It shows the local
+  time as `09:05PM` in `FONT_7X13_BOLD` at x=8, baseline y=20. Its color and
+  brightness come from a `Schedule`. Its next change is the next whole
+  minute. `render` formats the text into a stack buffer, so it allocates no
+  heap memory.
+- **`Schedule`** (`gameclock_core::schedule`, ADR-0014): a list of `Rule`s
+  and a default `Style` (color and brightness). A rule has a start and an end
+  `TimeOfDay` in whole minutes and a `Weekdays` set. The first rule that
+  matches the local time gives the style. `Schedule::legacy()` is the legacy
+  table.
+- **`Heartbeat`**: the base scene in the test-pattern mode. It is the test
+  pattern with one white pixel on row 1. The pixel moves one column each
+  second. It uses full brightness.
 - **`Clock`, `Wait`** (`gameclockd`, ADR-0013): the injected time source and
   the deadline wait. `SystemClock` gives the system time in the time zone
   from startup. `SignalWait` reads the signal pipe with a timeout until the
@@ -85,13 +98,15 @@
 
 `gameclockd` (ADR-0009, ADR-0010):
 
-1. **Arguments.** `parse_args` accepts only hzeller `--led-*` flags. Any other
-   argument exits 2 before the daemon touches the panel.
+1. **Arguments.** `parse_args` accepts hzeller `--led-*` flags and
+   `--test-pattern`. It gives the mode and the driver flags in their order.
+   Any other argument exits 2 before the daemon touches the panel.
 2. **Signals and time.** The daemon registers SIGTERM and SIGINT with
    `signal-hook` before the driver starts. Each signal writes a byte to a
    `UnixStream` pair (ADR-0013). Then the daemon reads the system time zone
    once and names it on stderr. If no time zone is available, it uses UTC
-   and writes a warning.
+   and writes a warning. It also names the base scene: the clock, or the
+   test pattern with `--test-pattern`.
 3. **Panel, selected at build time.** There are three builds:
    - `hzeller` (the Pi build, `scripts/build-pi.sh`): `HzellerPanel::new`
      receives the flags.
@@ -100,10 +115,11 @@
 
    Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
    build with `hzeller` and `simulator` together stops with a compile error.
-4. **Run.** `run` puts the heartbeat in a panel-sized `Compositor`. Then it
+4. **Run.** `run` puts the base scene in a panel-sized `Compositor`. Then it
    loops:
    1. It gets the time from the clock and updates the compositor.
-   2. If the update gives a frame, it presents the frame at full brightness.
+   2. If the update gives a frame, it presents the frame at the brightness
+      that the update gives.
    3. It waits until the compositor's deadline or a stop signal. With no
       deadline, the wait has no timeout. The wait is a blocked read with no
       extra thread.
@@ -113,7 +129,9 @@
 
 On the Pi, the daemon runs as the `gameclockd` systemd service
 (`deploy/gameclockd.service`, installed by `scripts/deploy.sh`). The service
-conflicts with the legacy `clock.svc.service` (ADR-0010).
+conflicts with the legacy `clock.svc.service` (ADR-0010). It starts the
+daemon with `--led-pwm-bits=8`, before the flags from
+`/etc/default/gameclockd` (ADR-0015).
 
 ## Data flow
 
@@ -121,8 +139,8 @@ conflicts with the legacy `clock.svc.service` (ADR-0010).
    Planned: also on input.
 2. It gives the injected time to the compositor. The compositor renders the
    top scene into a `Frame`.
-3. If the frame is different from the last presented frame, the loop calls
-   `panel.present(frame, brightness)`.
+3. If the frame or the brightness is different from the last presented
+   ones, the loop calls `panel.present(frame, brightness)`.
 4. It gets the next deadline from the compositor and waits.
 
 The wait uses a duration. When the system clock steps (for example at the
@@ -131,13 +149,14 @@ first NTP sync), the wake can be late by up to one interval (ADR-0013).
 ## Scene model
 
 A **scene** is a self-contained renderer with its own state. It reports when
-it next changes and when it finishes (ADR-0012). Now the only scene in the
-daemon is the heartbeat.
+it next changes and when it finishes. It also gives its brightness
+(ADR-0012, ADR-0014). Now the daemon has one base scene: the clock, or the
+heartbeat in the test-pattern mode.
 
 The **compositor** decides what is visible: the base scene, or the newest
 foreground scene. Scenes never refer to each other.
 
-Planned: the legacy Clock, Message Board, Panic, and Bedtime become scenes.
+Planned: the Message Board, Panic, and Bedtime become scenes.
 Panic and Bedtime will likely be configured instances of one alert
 capability, not special cases. Priorities, layers, and transitions are not
 in the compositor yet (see `roadmap.md`).

@@ -5,7 +5,7 @@ use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
 use jiff::{SignedDuration, Timestamp, Zoned};
 
-use crate::Frame;
+use crate::{Brightness, Frame};
 
 /// The shortest time between two renders. It caps renders at 30 each second
 /// (docs/adr/0006).
@@ -26,6 +26,12 @@ pub trait Scene {
 
     /// True when the scene has nothing more to show at `now`.
     fn is_finished(&self, now: &Zoned) -> bool;
+
+    /// The panel brightness for `now`. The default is full brightness
+    /// (docs/adr/0014).
+    fn brightness(&self, _now: &Zoned) -> Brightness {
+        Brightness::MAX
+    }
 }
 
 /// Decides which scene is visible and renders it.
@@ -39,6 +45,8 @@ pub struct Compositor {
     work: Frame,
     /// The last frame that `update` gave.
     shown: Frame,
+    /// The brightness that `update` gave with `shown`.
+    shown_brightness: Brightness,
     /// False until the first `update` gives a frame.
     started: bool,
 }
@@ -62,6 +70,7 @@ impl Compositor {
             foreground: Vec::new(),
             work: Frame::new(width, height),
             shown: Frame::new(width, height),
+            shown_brightness: Brightness::MAX,
             started: false,
         }
     }
@@ -89,9 +98,10 @@ impl Compositor {
     }
 
     /// Remove the finished foreground scenes, then render the top scene for
-    /// `now`. Give the frame if it is different from the last frame that
-    /// this function gave. The first call always gives a frame.
-    pub fn update(&mut self, now: &Zoned) -> Option<&Frame> {
+    /// `now`. Give the frame and the top scene's brightness if the frame or
+    /// the brightness is different from the last ones that this function
+    /// gave. The first call always gives a frame.
+    pub fn update(&mut self, now: &Zoned) -> Option<(&Frame, Brightness)> {
         self.foreground.retain(|s| !s.is_finished(now));
         match self.work.clear(Rgb888::BLACK) {
             Ok(()) => {}
@@ -102,19 +112,21 @@ impl Compositor {
             None => self.base.as_mut(),
         };
         top.render(now, &mut self.work);
-        if self.started && self.work == self.shown {
+        let brightness = top.brightness(now);
+        if self.started && brightness == self.shown_brightness && self.work == self.shown {
             return None;
         }
         self.started = true;
+        self.shown_brightness = brightness;
         core::mem::swap(&mut self.work, &mut self.shown);
-        Some(&self.shown)
+        Some((&self.shown, brightness))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Frame;
+    use crate::{Brightness, Frame};
     use embedded_graphics::pixelcolor::Rgb888;
     use jiff::tz::TimeZone;
     use jiff::{Timestamp, Zoned};
@@ -227,6 +239,43 @@ mod tests {
         }
     }
 
+    /// A red image that does not change, at one brightness before `at` and
+    /// another from `at`.
+    struct Dim {
+        before: Brightness,
+        after: Brightness,
+        at: Timestamp,
+    }
+
+    impl Dim {
+        fn fixed(percent: u8) -> Box<dyn Scene> {
+            Box::new(Self {
+                before: Brightness::new(percent),
+                after: Brightness::new(percent),
+                at: ts(T0),
+            })
+        }
+    }
+
+    impl Scene for Dim {
+        fn render(&mut self, _now: &Zoned, frame: &mut Frame) {
+            frame.clear(Rgb888::RED).unwrap();
+        }
+        fn next_change(&self, now: &Zoned) -> Option<Timestamp> {
+            (now.timestamp() < self.at).then_some(self.at)
+        }
+        fn is_finished(&self, _now: &Zoned) -> bool {
+            false
+        }
+        fn brightness(&self, now: &Zoned) -> Brightness {
+            if now.timestamp() < self.at {
+                self.before
+            } else {
+                self.after
+            }
+        }
+    }
+
     fn all(frame: &Frame, color: Rgb888) -> bool {
         frame.pixels().iter().all(|&p| p == color)
     }
@@ -238,7 +287,7 @@ mod tests {
     #[test]
     fn base_scene_with_an_empty_stack() {
         let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
-        let frame = c.update(&at(T0)).expect("first update gives a frame");
+        let frame = c.update(&at(T0)).expect("first update gives a frame").0;
         assert!(all(frame, Rgb888::RED));
     }
 
@@ -247,7 +296,7 @@ mod tests {
         let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
         c.push(Solid::plain(Rgb888::GREEN));
         c.push(Solid::plain(Rgb888::BLUE));
-        let frame = c.update(&at(T0)).unwrap();
+        let frame = c.update(&at(T0)).unwrap().0;
         assert!(all(frame, Rgb888::BLUE));
     }
 
@@ -256,9 +305,9 @@ mod tests {
     #[test]
     fn no_pixels_remain_from_the_scene_below() {
         let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
-        assert!(all(c.update(&at(T0)).unwrap(), Rgb888::RED));
+        assert!(all(c.update(&at(T0)).unwrap().0, Rgb888::RED));
         c.push(Box::new(Dot));
-        let frame = c.update(&at(T0)).unwrap();
+        let frame = c.update(&at(T0)).unwrap().0;
         assert_eq!(frame.pixel(Point::zero()), Some(Rgb888::WHITE));
         let black = frame.pixels()[1..].iter().all(|&p| p == Rgb888::BLACK);
         assert!(black, "all pixels except (0, 0) must be black");
@@ -275,7 +324,7 @@ mod tests {
     #[test]
     fn base_scene_returns_after_the_foreground_scene_finishes() {
         let mut c = with_finishing_green();
-        let frame = c.update(&at("2026-01-01T12:00:05Z")).unwrap();
+        let frame = c.update(&at("2026-01-01T12:00:05Z")).unwrap().0;
         assert!(all(frame, Rgb888::RED));
         assert_eq!(c.foreground_len(), 0);
     }
@@ -283,7 +332,7 @@ mod tests {
     #[test]
     fn unfinished_foreground_scene_stays() {
         let mut c = with_finishing_green();
-        let frame = c.update(&at("2026-01-01T12:00:04Z")).unwrap();
+        let frame = c.update(&at("2026-01-01T12:00:04Z")).unwrap().0;
         assert!(all(frame, Rgb888::GREEN));
         assert_eq!(c.foreground_len(), 1);
     }
@@ -293,7 +342,7 @@ mod tests {
     #[test]
     fn finished_base_scene_is_still_shown() {
         let mut c = Compositor::new(Box::new(Done), W, H);
-        let frame = c.update(&at(T0)).unwrap();
+        let frame = c.update(&at(T0)).unwrap().0;
         assert!(all(frame, Rgb888::RED));
     }
 
@@ -324,9 +373,39 @@ mod tests {
             at: ts("2026-01-01T12:00:01Z"),
         });
         let mut c = Compositor::new(switch, W, H);
-        assert!(all(c.update(&at(T0)).unwrap(), Rgb888::RED));
+        assert!(all(c.update(&at(T0)).unwrap().0, Rgb888::RED));
         let second = c.update(&at("2026-01-01T12:00:01Z"));
-        assert!(all(second.expect("changed image"), Rgb888::BLUE));
+        assert!(all(second.expect("changed image").0, Rgb888::BLUE));
+    }
+
+    #[test]
+    fn changed_brightness_gives_a_frame() {
+        let dim = Box::new(Dim {
+            before: Brightness::new(25),
+            after: Brightness::new(60),
+            at: ts("2026-01-01T12:00:01Z"),
+        });
+        let mut c = Compositor::new(dim, W, H);
+        assert!(c.update(&at(T0)).is_some());
+        let second = c.update(&at("2026-01-01T12:00:01Z"));
+        let (frame, brightness) = second.expect("changed brightness");
+        assert!(all(frame, Rgb888::RED));
+        assert_eq!(brightness, Brightness::new(60));
+    }
+
+    // Scenes give a brightness.
+
+    #[test]
+    fn default_brightness_is_full() {
+        let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
+        assert_eq!(c.update(&at(T0)).unwrap().1, Brightness::MAX);
+    }
+
+    #[test]
+    fn brightness_of_the_top_scene() {
+        let mut c = Compositor::new(Dim::fixed(25), W, H);
+        c.push(Dim::fixed(80));
+        assert_eq!(c.update(&at(T0)).unwrap().1, Brightness::new(80));
     }
 
     // The deadline is the top scene's next change.
