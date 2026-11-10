@@ -43,7 +43,7 @@ the panel at the same time.
 
 #### Scenario: Service replaces the legacy clock (on-device)
 - **WHEN** the legacy clock service runs and the `gameclockd` service is started
-- **THEN** the legacy clock service stops and the panel shows the test pattern
+- **THEN** the legacy clock service stops and the panel shows the clock
 
 #### Scenario: Legacy clock is a one-command rollback (on-device)
 - **WHEN** the `gameclockd` service runs and the legacy clock service is started
@@ -112,3 +112,16 @@ SHALL also give the driver flags and the measurement window.
 - **WHEN** the change is reviewed for archive
 - **THEN** its measurement record has CPU %, RSS, and refresh Hz for the legacy clock and for `gameclockd`
 - **AND** each value has the driver flags and the window that were used
+
+### Requirement: The service sets the PWM bits
+The service unit SHALL start the daemon with `--led-pwm-bits=8` (ADR-0015).
+The flags from `/etc/default/gameclockd` SHALL come after it, so that a
+device can set a different value.
+
+#### Scenario: Unit passes 8 PWM bits first
+- **WHEN** the unit test reads `deploy/gameclockd.service`
+- **THEN** its start command is `/usr/local/bin/gameclockd --led-pwm-bits=8 $GAMECLOCKD_ARGS`
+
+#### Scenario: Clock colors at 8 PWM bits (on-device)
+- **WHEN** the service shows the clock at brightness 25 in red and in mellow
+- **THEN** a person sees each color as steady and correct, with no visible color steps, flicker, or moving lines

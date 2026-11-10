@@ -62,7 +62,7 @@ Measured at bring-up
 - Shimmer glitches and moving white lines: they come from the
   `adafruit-hat` mapping. `adafruit-hat-pwm` removes them, and the refresh
   rate goes up to 176 Hz at 8 bits
-  (`openspec/changes/clock-scene/measurements.md`). PWM bits and interlaced
+  (`openspec/changes/archive/2026-11-10-clock-scene/measurements.md`). PWM bits and interlaced
   scan do not change them.
 - `--led-limit-refresh-rate-hz`: caps the refresh thread so the app keeps some
   CPU.

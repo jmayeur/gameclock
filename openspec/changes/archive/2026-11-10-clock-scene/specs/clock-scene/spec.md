@@ -1,3 +1,9 @@
+## Purpose
+
+Defines the clock face: the local time in the legacy format, and when the
+image changes. It also defines the time-of-day schedule that sets the text
+color and the panel brightness. The legacy schedule is the default.
+
 ## ADDED Requirements
 
 ### Requirement: The clock shows the local time in the legacy format

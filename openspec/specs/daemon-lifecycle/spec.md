@@ -10,19 +10,25 @@ service on the Pi.
 
 ### Requirement: Startup presents the base scene at once
 At startup, the daemon SHALL render its base scene into a frame of the
-panel's size, for the injected time. It SHALL present that frame at full
-brightness before it waits for the first time. The base scene is the
-heartbeat scene.
+panel's size, for the injected time. It SHALL present that frame at the
+brightness that the compositor gives, before it waits for the first time.
+The base scene is the clock with the legacy schedule. With `--test-pattern`,
+the base scene is the heartbeat scene.
 
 #### Scenario: One present at startup
-- **WHEN** the daemon runs with a 64×32 recording test panel at 1970-01-01T00:00:00.250Z and gets a shutdown request at its first wait
+- **WHEN** the daemon runs with the clock and a 64×32 recording test panel at 1970-01-01T00:00:00.250Z in UTC
+- **AND** it gets a shutdown request at its first wait
 - **THEN** the panel recorded exactly one present
-- **AND** that frame is identical to the heartbeat scene rendered into a new 64×32 frame at the same time
-- **AND** the brightness was 100
+- **AND** that frame is identical to the legacy clock rendered into a new 64×32 frame at the same time
+- **AND** the brightness was 25
 
 #### Scenario: Frame follows the panel's size
 - **WHEN** the daemon runs with a 32×16 recording test panel
 - **THEN** the presented frame is 32×16
+
+#### Scenario: Host build names the clock
+- **WHEN** the host build of `gameclockd` starts with no arguments
+- **THEN** standard error has a line that says the base scene is the clock
 
 ### Requirement: The daemon blocks between deadlines
 Between renders, the daemon SHALL block until the compositor's deadline or a
@@ -43,8 +49,13 @@ block with no timeout until a shutdown signal arrives.
 - **THEN** the panel recorded exactly one present when the daemon returns
 
 #### Scenario: Heartbeat daemon wakes only each second (on-device)
-- **WHEN** `gameclockd` shows the heartbeat for at least 10 s, and we then measure it for 60 s
+- **WHEN** `gameclockd --test-pattern` shows the heartbeat for at least 10 s, and we then measure it for 60 s
 - **THEN** the main thread's count of voluntary context switches increases by at least 55 and at most 180
+- **AND** the main thread uses less than 1% of one core
+
+#### Scenario: Clock daemon wakes only each minute (on-device)
+- **WHEN** `gameclockd` shows the clock for at least 10 s, and we then measure it for 60 s
+- **THEN** the main thread's count of voluntary context switches increases by at most 10
 - **AND** the main thread uses less than 1% of one core
 
 ### Requirement: The loop renders at each deadline
@@ -121,11 +132,12 @@ both the hzeller driver and the simulator SHALL fail.
 - **WHEN** `gameclockd` is built with both the hzeller and simulator features
 - **THEN** the build fails with a message that says the two features cannot be used together
 
-### Requirement: Command-line arguments are limited to driver flags
-The daemon SHALL accept only hzeller `--led-*` flags as arguments. Any other
-argument SHALL cause a usage error and exit status 2, before the daemon
-touches the panel. A build without the hzeller driver SHALL accept and ignore
-`--led-*` flags, with a notice.
+### Requirement: Command-line arguments are driver flags and the test-pattern mode
+The daemon SHALL accept hzeller `--led-*` flags and `--test-pattern` as
+arguments. It SHALL give the `--led-*` flags to the driver in their order,
+without `--test-pattern`. Any other argument SHALL cause a usage error and
+exit status 2, before the daemon touches the panel. A build without the
+hzeller driver SHALL accept and ignore `--led-*` flags, with a notice.
 
 #### Scenario: Unknown argument is a usage error
 - **WHEN** `gameclockd` is started with `--frobnicate`
@@ -134,3 +146,26 @@ touches the panel. A build without the hzeller driver SHALL accept and ignore
 #### Scenario: Driver flags are ignored without the driver
 - **WHEN** `gameclockd` built without the hzeller driver is started with `--led-pwm-bits=7`
 - **THEN** it starts normally, and standard error says that `--led-*` flags are ignored
+
+#### Scenario: Test-pattern mode is not a driver flag
+- **WHEN** the arguments are `--led-pwm-bits=8`, `--test-pattern`, and `--led-slowdown-gpio=1`
+- **THEN** the base scene is the heartbeat scene
+- **AND** the driver flags are `--led-pwm-bits=8` and `--led-slowdown-gpio=1` in that order
+
+#### Scenario: Host build names the test pattern
+- **WHEN** the host build of `gameclockd` starts with `--test-pattern`
+- **THEN** standard error has a line that says the base scene is the test pattern
+
+### Requirement: The daemon presents at the scene's brightness
+Each present SHALL use the brightness that the compositor gives with the
+frame. A change of brightness alone SHALL cause a present.
+
+#### Scenario: Brightness of the base scene
+- **WHEN** the daemon runs with a static base scene at brightness 25
+- **THEN** the panel recorded one present at brightness 25
+
+#### Scenario: Brightness change presents the same image
+- **WHEN** the daemon runs with a base scene that keeps one image, at brightness 25 before 1970-01-01T00:00:01Z and 60 after it
+- **AND** its first wait ends at its deadline
+- **THEN** the panel recorded two presents with the same frame
+- **AND** their brightness values are 25 and 60 in that order

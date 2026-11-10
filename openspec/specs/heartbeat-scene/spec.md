@@ -2,9 +2,9 @@
 
 ## Purpose
 
-A temporary base scene that shows the event loop work. It is the test pattern
-with one marker that moves each second. It stays until the clock scene
-replaces it.
+The diagnostic base scene of the test-pattern mode (`--test-pattern`). It is
+the test pattern with one marker that moves each second, so it shows that the
+panel and the event loop work.
 
 ## Requirements
 
@@ -59,3 +59,12 @@ width of 6 or less, or a height of 1 or less, SHALL get no marker.
 - **WHEN** the heartbeat scene is rendered into frames of 0×0, 1×1, 6×32, and 64×1 pixels
 - **THEN** rendering completes without a panic
 - **AND** each frame is identical to the test pattern of the same size
+
+### Requirement: The heartbeat is a diagnostic mode at full brightness
+The heartbeat scene SHALL be the base scene only when the daemon starts with
+`--test-pattern`. It SHALL always give full brightness, so that the test
+pattern shows each color level of the panel.
+
+#### Scenario: Full brightness at each time
+- **WHEN** the heartbeat scene's brightness is asked at 1970-01-01T00:00:00Z and at 2026-11-10T23:05:00Z
+- **THEN** each brightness is 100
