@@ -48,8 +48,8 @@
 
 ## 7. CI
 
-- [ ] 7.1 Add a `pi-build` job: checkout with submodules, install pinned `zig` and `cargo-zigbuild`, run `scripts/build-pi.sh`, `scripts/check-pi-binary.sh`, and the Pi-target clippy from 4.6 ("CI produces the Pi binary"). Verify it passes on the PR.
-- [ ] 7.2 Add a `scripts` job: `shellcheck`, `scripts/test-unit.sh`, the deploy test, and `scripts/test-measure.sh`. Verify it passes on the PR.
+- [x] 7.1 Add a `pi-build` job: checkout with submodules, install pinned `zig` and `cargo-zigbuild`, run `scripts/build-pi.sh`, `scripts/check-pi-binary.sh`, and the Pi-target clippy from 4.6 ("CI produces the Pi binary"). Verify it passes on the PR.
+- [x] 7.2 Add a `scripts` job: `shellcheck`, `scripts/test-unit.sh`, the deploy test, and `scripts/test-measure.sh`. Verify it passes on the PR.
 
 ## 8. On-device validation (Pi Zero W)
 
