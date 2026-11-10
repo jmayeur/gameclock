@@ -2,7 +2,7 @@
 
 ## 1. ADRs
 
-- [ ] 1.1 Write ADR-0014 (scene brightness and the time-of-day schedule as data). Add it to the index in `docs/adr/README.md`. Link it from ADR-0012's related line as a mechanical note only. Verify with `scripts/lint-docs.sh` and `git diff docs/adr/0012-scenes-and-compositor.md`.
+- [x] 1.1 Write ADR-0014 (scene brightness and the time-of-day schedule as data). Add it to the index in `docs/adr/README.md`. Link it from ADR-0012's related line as a mechanical note only. Verify with `scripts/lint-docs.sh` and `git diff docs/adr/0012-scenes-and-compositor.md`.
 
 ## 2. Scene brightness (`scene-model`)
 
