@@ -32,8 +32,8 @@
 
 ## 6. Service unit (`pi-deployment`)
 
-- [ ] 6.1 Red: add the `RuntimeDirectory=gameclockd` and `RuntimeDirectoryMode=0700` lines to `scripts/test-unit.sh`. Run it in the `gameclock-linux-test` image and see it fail.
-- [ ] 6.2 Green: add the lines to `deploy/gameclockd.service` (D8). Verify that `scripts/test-unit.sh` passes.
+- [x] 6.1 Red: add the `RuntimeDirectory=gameclockd` and `RuntimeDirectoryMode=0700` lines to `scripts/test-unit.sh`. Run it in the `gameclock-linux-test` image and see it fail.
+- [x] 6.2 Green: add the lines to `deploy/gameclockd.service` (D8). Verify that `scripts/test-unit.sh` passes.
 
 ## 7. On-device verification and measurements
 
