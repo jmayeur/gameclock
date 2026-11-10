@@ -45,10 +45,19 @@ time.
 
 No feature code without an OpenSpec change (`openspec/changes/<name>/`):
 
-1. Propose: agree on behavior and scenarios before code.
-2. Record any ADR the change needs.
-3. Implement test-first, and update the design docs.
-4. Archive the change once merged so `openspec/specs/` stays the source of truth.
+1. **`/opsx:propose`**: write the proposal, spec deltas, design, and tasks.
+   Agree on behavior before any code. Use `/opsx:explore` first if the idea is
+   still fuzzy.
+2. Record any ADR the change needs. An ADR is required even if the decision is
+   also described in the change's `design.md`.
+3. **`/opsx:apply`**: implement test-first (every scenario maps to a test) and
+   update the design docs.
+4. **`/opsx:archive`** once merged, so `openspec/specs/` stays the source of
+   truth.
+
+`openspec/config.yaml` builds these rules into every proposal and task list.
+Keep it in sync with this file. Do feature work on a branch or worktree, one
+change per PR.
 
 Refactors, dependency bumps, and doc fixes don't need a change proposal.
 
@@ -88,6 +97,7 @@ cargo clippy --all-targets -- -D warnings     # pedantic lints are on
 cargo test
 cargo deny check                               # licenses, advisories, sources
 cargo check --target arm-unknown-linux-gnueabihf   # Pi Zero W target
+openspec validate --all --strict               # specs and changes
 ```
 
 The toolchain is pinned in `rust-toolchain.toml` (rustup installs it

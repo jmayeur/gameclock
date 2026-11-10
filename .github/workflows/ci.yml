@@ -25,6 +25,17 @@ jobs:
       - name: Type-check for Pi Zero W (ARMv6)
         run: cargo check --locked --target arm-unknown-linux-gnueabihf
 
+  openspec:
+    name: openspec validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Keep in sync with the version in CONTRIBUTING.md / ADR-0008.
+      - run: npx -y @fission-ai/openspec@1.17.0 validate --all --strict --no-interactive
+
   deny:
     name: licenses · advisories
     runs-on: ubuntu-latest

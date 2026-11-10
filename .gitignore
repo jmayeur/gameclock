@@ -3,6 +3,11 @@
 
 # Binaries ship from this repo, so Cargo.lock IS committed.
 
+# Claude Code: local worktrees and personal settings. The shared skills and
+# commands under .claude/ are committed.
+.claude/worktrees/
+.claude/settings.local.json
+
 .DS_Store
 .idea/
 .vscode/

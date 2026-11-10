@@ -17,3 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
   behavior), and Pi Zero W hardware notes.
 - CI: fmt, clippy (pedantic), tests, cargo-deny, ARMv6 type-check. Dependabot
   for cargo and actions.
+- OpenSpec 1.17.0 (`@fission-ai/openspec`), set up for Claude Code: `/opsx:*`
+  commands and skills, plus a project `openspec/config.yaml` that encodes the
+  ADR, design-doc, performance, and license rules. CI runs
+  `openspec validate --all --strict`.

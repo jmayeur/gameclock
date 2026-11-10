@@ -1,7 +1,7 @@
 # Roadmap
 
-Proposed OpenSpec changes, in order. Each becomes
-`openspec/changes/<name>/` when we start it. Order and scope are open to change.
+Proposed OpenSpec changes, in order. OpenSpec is set up (ADR-0008). Each item
+becomes `openspec/changes/<name>/` through `/opsx:propose` when we start it. Order and scope are open to change.
 This file is updated as changes land or plans shift.
 
 ## Foundation (core of driving the panel)

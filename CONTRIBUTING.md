@@ -4,7 +4,10 @@ The short version of [`CLAUDE.md`](CLAUDE.md), which is the full working
 agreement.
 
 1. **Features start as an OpenSpec change** in `openspec/changes/<name>/`. Agree
-   on the behavior and scenarios before writing code.
+   on the behavior and scenarios before writing code. Install the CLI once with
+   `npm i -g @fission-ai/openspec@1.17.0` (not the unscoped `openspec`
+   package). In Claude Code, run `/opsx:propose`, then `/opsx:apply`, then
+   `/opsx:archive`.
 2. **Decisions get an ADR.** That covers dependencies, boundaries, hardware or
    deployment assumptions, licensing, and reversals. See
    [`docs/adr/`](docs/adr/).
@@ -16,6 +19,7 @@ agreement.
    cargo clippy --all-targets -- -D warnings
    cargo test
    cargo deny check
+   openspec validate --all --strict
    ```
 5. **Performance claims come with numbers**, measured on the Pi Zero W for
    anything runtime-related.
