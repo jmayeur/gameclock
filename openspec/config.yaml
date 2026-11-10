@@ -35,7 +35,7 @@ rules:
   tasks:
     - Include tasks to write or update any ADRs (and the ADR index in docs/adr/README.md).
     - Include tasks to update docs/design/ (architecture, glossary, roadmap) and CHANGELOG.md.
-    - Write tests before or with implementation; every spec scenario maps to a test.
+    - Test-first, red -> green (CLAUDE.md Rule 4). Every spec scenario maps to a test. A task that writes the failing test and confirms it fails precedes the task that implements it. Hardware and FFI work starts with a failing check too (build-time assertion, script test, or on-device scenario).
     - Finish with cargo fmt, cargo clippy --all-targets -D warnings, cargo test, cargo deny check, and the ARMv6 check.
     - For changes that affect runtime behavior on the Pi, include a task to record on-device measurements in the change.
 
@@ -43,6 +43,7 @@ operations:
   apply:
     guidance:
       - Keep gameclock-core pure; push I/O, time, and hardware to gameclockd or a driver crate.
+      - Red -> green -> refactor. Write the test, run it, and see it fail for the expected reason before writing the code. Then make it pass with the least code, then refactor with tests green.
       - If implementation reveals a decision not covered by an ADR, stop and propose the ADR before continuing.
   archive:
     guidance:

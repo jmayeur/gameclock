@@ -2,10 +2,10 @@
 
 ## 1. Decisions and tooling
 
-- [ ] 1.1 Write `docs/adr/0009-driver-crate-layout-and-flags.md` (status Accepted; refines ADR-0004: single `rgbmatrix-sys` crate for raw FFI and safe panel, `link`/`hzeller` features, hzeller `--led-*` pass-through over Pi defaults, `cc` build dependency, statically linked libc++/compiler-rt under Apache-2.0 WITH LLVM-exception, pinned-commit fallback to `a3eea99`); link it to this change and back. Verify the file follows `docs/adr/template.md`.
-- [ ] 1.2 Write `docs/adr/0010-systemd-service-and-signals.md` (root start with hzeller's privilege drop, `Conflicts=clock.svc.service`, boot enablement as an explicit step, `EnvironmentFile` for driver flags, deploy over SSH with `GAMECLOCK_HOST`, `signal-hook` for thread-free blocking signal waits); link it to this change and back. Verify against the template.
-- [ ] 1.3 Add ADR-0009 and ADR-0010 to the index in `docs/adr/README.md`, and add "Refined by ADR-0009" to ADR-0004's Related line. Verify the links resolve.
-- [ ] 1.4 Install `zig` and `cargo-zigbuild` on the dev machine (pinned versions), and document both plus `git submodule update --init` in `CONTRIBUTING.md`. Verify `cargo zigbuild --version` and `zig version` run.
+- [x] 1.1 Write `docs/adr/0009-driver-crate-layout-and-flags.md` (status Accepted; refines ADR-0004: single `rgbmatrix-sys` crate for raw FFI and safe panel, `link`/`hzeller` features, hzeller `--led-*` pass-through over Pi defaults, `cc` build dependency, statically linked libc++/compiler-rt under Apache-2.0 WITH LLVM-exception, pinned-commit fallback to `a3eea99`); link it to this change and back. Verify the file follows `docs/adr/template.md`.
+- [x] 1.2 Write `docs/adr/0010-systemd-service-and-signals.md` (root start with hzeller's privilege drop, `Conflicts=clock.svc.service`, boot enablement as an explicit step, `EnvironmentFile` for driver flags, deploy over SSH with `GAMECLOCK_HOST`, `signal-hook` for thread-free blocking signal waits); link it to this change and back. Verify against the template.
+- [x] 1.3 Add ADR-0009 and ADR-0010 to the index in `docs/adr/README.md`, and add "Refined by ADR-0009" to ADR-0004's Related line. Verify the links resolve.
+- [x] 1.4 Install `zig` and `cargo-zigbuild` on the dev machine (pinned versions), and document both plus `git submodule update --init` in `CONTRIBUTING.md`. Verify `cargo zigbuild --version` and `zig version` run.
 
 ## 2. Test pattern (gameclock-core)
 
@@ -22,10 +22,10 @@
 ## 4. Driver crate, linked parts (rgbmatrix-sys `link`)
 
 - [ ] 4.1 Add hzeller `rpi-rgb-led-matrix` as a submodule at `vendor/rpi-rgb-led-matrix`, pinned to current upstream `master`; record the commit hash in ADR-0009 and `docs/hardware/pi-zero-w.md`. Verify `git submodule status` shows the pinned hash.
-- [ ] 4.2 Write `build.rs`: missing-submodule error with the `git submodule update --init` hint, two `cc::Build`s mirroring the pinned `lib/Makefile` flags and defines, `-mcpu=arm1176jzf_s` for the Pi target, link `stdc++`/`pthread`/`rt`/`m`, `rerun-if-changed`. Verify that with an empty `vendor/rpi-rgb-led-matrix`, `scripts/build-pi.sh` fails with the hint ("Missing driver source fails clearly").
-- [ ] 4.3 Hand-write `ffi` from the pinned `include/led-matrix-c.h` (only the functions we call, plus the options/runtime-options/`Color` structs) and `layout_check.c` with matching `const` size/offset assertions in Rust. Verify the build fails if one asserted size is deliberately changed, then restore it.
-- [ ] 4.4 Implement `HzellerPanel` (`new(args)` via the header's flag-parsing constructor over `DEFAULTS`, preallocated buffer, `present` = check → prepare → set brightness → `led_canvas_set_pixels` → swap on vsync, `Drop` = `led_matrix_delete`), each `unsafe` block with `// SAFETY:`. Verify `grep -c 'unsafe' ` matches the count of `// SAFETY:` comments.
-- [ ] 4.5 Add `scripts/build-pi.sh` (the single `cargo zigbuild --release -p gameclockd --features hzeller --target arm-unknown-linux-gnueabihf.2.28` entry point) and `scripts/check-pi-binary.sh` (ELF ARMv6 + hard-float attributes, no `GLIBC_` version above 2.28, no `libstdc++`/`libc++` in `NEEDED`). Verify both pass locally on the built binary.
+- [ ] 4.2 Red: add `scripts/build-pi.sh` (the single `cargo zigbuild --release -p gameclockd --features hzeller --target arm-unknown-linux-gnueabihf.2.28` entry point) and `scripts/check-pi-binary.sh` (ELF ARMv6 + hard-float attributes, no `GLIBC_` version above 2.28, no `libstdc++`/`libc++` in `NEEDED`). Verify the checker fails against a non-Pi binary (for example a host build of `gameclockd`) and that `build-pi.sh` fails before the driver is wired up.
+- [ ] 4.3 Write `build.rs`: missing-submodule error with the `git submodule update --init` hint, two `cc::Build`s mirroring the pinned `lib/Makefile` flags and defines, `-mcpu=arm1176jzf_s` for the Pi target, link `stdc++`/`pthread`/`rt`/`m`, `rerun-if-changed`. Verify red first: with an empty `vendor/rpi-rgb-led-matrix`, `scripts/build-pi.sh` fails with the hint ("Missing driver source fails clearly").
+- [ ] 4.4 Hand-write `ffi` from the pinned `include/led-matrix-c.h` (only the functions we call, plus the options/runtime-options/`Color` structs) and `layout_check.c` with matching `const` size/offset assertions in Rust. Red first: write the C and Rust layout assertions before the struct mirrors and see the build fail, then add the mirrors until it passes. Verify the build also fails when one asserted size is deliberately changed, then restore it.
+- [ ] 4.5 Implement `HzellerPanel` (`new(args)` via the header's flag-parsing constructor over `DEFAULTS`, preallocated buffer, `present` = check → prepare → set brightness → `led_canvas_set_pixels` → swap on vsync, `Drop` = `led_matrix_delete`), each `unsafe` block with `// SAFETY:`. Verify every `unsafe` block has a `// SAFETY:` comment, and that `scripts/build-pi.sh && scripts/check-pi-binary.sh` now pass (green for 4.2).
 - [ ] 4.6 Run clippy on the linked code for the Pi target (`cargo zigbuild clippy --release -p gameclockd --features hzeller --target arm-unknown-linux-gnueabihf.2.28 -- -D warnings`); if `cargo zigbuild clippy` cannot do this, record the fallback in ADR-0009. Verify it is clean.
 - [ ] 4.7 Update `docs/design/architecture.md` (crate table: `rgbmatrix-sys` exists, features, data flow of `present`). Verify it matches the code.
 
@@ -34,21 +34,22 @@
 - [ ] 5.1 Add `signal-hook` to `[workspace.dependencies]` and `gameclockd`, plus the `hzeller` feature. Verify `cargo deny check` passes.
 - [ ] 5.2 Split `gameclockd` into `lib.rs` + `main.rs`. Write failing tests with recording/failing test panels for "One present at startup", "Frame follows the panel's size", "No presents while waiting" (500 ms delayed shutdown), and "Present failure exits non-zero" (error carries the panel message). Verify they fail.
 - [ ] 5.3 Implement `run` and `LogPanel`. Verify the 5.2 tests pass.
-- [ ] 5.4 Write failing tests for `parse_args` (only `--led-*` accepted; `--frobnicate` is a usage error naming the argument). Implement it. Verify the tests pass.
-- [ ] 5.5 Implement `main`: parse args (exit 2 on usage error), register SIGTERM/SIGINT before building the panel, choose the panel by feature, print the "no LED driver" and "ignoring `--led-*`" notices on host builds, block on `Signals::forever()`, map errors to a non-zero exit. Add integration tests in `crates/gameclockd/tests/` that spawn the host binary for "SIGTERM exits with success", "SIGINT exits with success" (both within 1 s), "Unknown argument is a usage error", "Host build announces the logging panel", and "Driver flags are ignored without the driver". Verify `cargo test -p gameclockd` passes.
-- [ ] 5.6 Update `docs/design/architecture.md` (daemon section: startup, panel choice by feature, blocking idle, shutdown) and `docs/design/glossary.md` (LogPanel, driver flags). Verify the docs match the code.
+- [ ] 5.4 Write tests for `parse_args` (only `--led-*` accepted; `--frobnicate` is a usage error naming the argument) and see them fail. Then implement it. Verify the tests pass.
+- [ ] 5.5 Write integration tests in `crates/gameclockd/tests/` that spawn the host binary for "SIGTERM exits with success", "SIGINT exits with success" (both within 1 s), "Unknown argument is a usage error", "Host build announces the logging panel", and "Driver flags are ignored without the driver". Verify they fail against the current stub `main`.
+- [ ] 5.6 Implement `main`: parse args (exit 2 on usage error), register SIGTERM/SIGINT before building the panel, choose the panel by feature, print the "no LED driver" and "ignoring `--led-*`" notices on host builds, block on `Signals::forever()`, map errors to a non-zero exit. Verify the 5.5 tests pass.
+- [ ] 5.7 Update `docs/design/architecture.md` (daemon section: startup, panel choice by feature, blocking idle, shutdown) and `docs/design/glossary.md` (LogPanel, driver flags). Verify the docs match the code.
 
 ## 6. Deploy and measurement scripts
 
-- [ ] 6.1 Add `deploy/gameclockd.service` per design D8. Verify with `systemd-analyze verify` on a Linux machine or CI.
-- [ ] 6.2 Write a test for "Deploy without a host refuses" (stub `ssh`/`scp` on `PATH` that fail if called), then write `scripts/deploy.sh` with default, `--enable`, and `--rollback` modes. Verify the test and `shellcheck scripts/*.sh` pass.
-- [ ] 6.3 Write `scripts/test-measure.sh` for "Idle process measures near zero", "Busy process measures near one core", and "Threads are reported separately", then write `scripts/measure.sh` (POSIX `sh`, total and per-thread CPU %, `VmRSS`, voluntary context switches). Verify the test passes on Linux (CI or a container).
+- [ ] 6.1 Red: add a `scripts/test-unit.sh` check that runs `systemd-analyze verify` and asserts the unit has `Conflicts=clock.svc.service`, `Restart=on-failure`, no `User=`, and the `EnvironmentFile`; see it fail with no unit. Then add `deploy/gameclockd.service` per design D8 until it passes (Linux machine or CI).
+- [ ] 6.2 Write a test (see it fail first) for "Deploy without a host refuses" (stub `ssh`/`scp` on `PATH` that fail if called), then write `scripts/deploy.sh` with default, `--enable`, and `--rollback` modes. Verify the test and `shellcheck scripts/*.sh` pass.
+- [ ] 6.3 Write `scripts/test-measure.sh` (see it fail first) for "Idle process measures near zero", "Busy process measures near one core", and "Threads are reported separately", then write `scripts/measure.sh` (POSIX `sh`, total and per-thread CPU %, `VmRSS`, voluntary context switches). Verify the test passes on Linux (CI or a container).
 - [ ] 6.4 Document building, deploying, rolling back, and measuring in `CONTRIBUTING.md`. Verify the documented commands match the scripts' flags.
 
 ## 7. CI
 
 - [ ] 7.1 Add a `pi-build` job: checkout with submodules, install pinned `zig` and `cargo-zigbuild`, run `scripts/build-pi.sh`, `scripts/check-pi-binary.sh`, and the Pi-target clippy from 4.6 ("CI produces the Pi binary"). Verify it passes on the PR.
-- [ ] 7.2 Add a `scripts` job: `shellcheck`, `systemd-analyze verify deploy/gameclockd.service`, the deploy test, and `scripts/test-measure.sh`. Verify it passes on the PR.
+- [ ] 7.2 Add a `scripts` job: `shellcheck`, `scripts/test-unit.sh`, the deploy test, and `scripts/test-measure.sh`. Verify it passes on the PR.
 
 ## 8. On-device validation (Pi Zero W)
 
