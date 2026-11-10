@@ -36,8 +36,8 @@
 - [x] 6.1 Red: change `scripts/test-unit.sh` to expect `ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 $GAMECLOCKD_ARGS`. Run it in the `gameclock-linux-test` image and see it fail.
 - [x] 6.2 Green: change `deploy/gameclockd.service` (D5). Change the comment example in the unit so it does not suggest a second PWM-bits value. Verify that `scripts/test-unit.sh` passes.
 
-- [ ] 6.3 Red: change the `rgbmatrix-sys` test "Built-in defaults describe this Pi" to expect `adafruit-hat-pwm`. Run `cargo test -p rgbmatrix-sys` and see it fail on the mapping.
-- [ ] 6.4 Green: change `DEFAULTS.hardware_mapping` to `adafruit-hat-pwm` (design D6). Verify that the 6.3 test passes and that `scripts/clippy-pi.sh` passes.
+- [x] 6.3 Red: change the `rgbmatrix-sys` test "Built-in defaults describe this Pi" to expect `adafruit-hat-pwm`. Run `cargo test -p rgbmatrix-sys` and see it fail on the mapping.
+- [x] 6.4 Green: change `DEFAULTS.hardware_mapping` to `adafruit-hat-pwm` (design D6). Verify that the 6.3 test passes and that `scripts/clippy-pi.sh` passes.
 
 ## 7. On-device verification and measurements
 
