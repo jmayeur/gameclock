@@ -8,11 +8,13 @@ Conflicts=clock.svc.service
 
 [Service]
 Type=simple
-# Driver tuning without a rebuild, e.g.
-#   GAMECLOCKD_ARGS=--led-pwm-bits=7 --led-slowdown-gpio=1
+# Driver tuning without a rebuild, for example:
+#   GAMECLOCKD_ARGS=--led-slowdown-gpio=1 --led-show-refresh
 EnvironmentFile=-/etc/default/gameclockd
 # Starts as root to map GPIO. hzeller drops to the 'daemon' user after init.
-ExecStart=/usr/local/bin/gameclockd $GAMECLOCKD_ARGS
+# 8 PWM bits for the clock (docs/adr/0015). The driver reads flags in order,
+# so a --led-pwm-bits value in GAMECLOCKD_ARGS replaces this one.
+ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 $GAMECLOCKD_ARGS
 Restart=on-failure
 RestartSec=2
 

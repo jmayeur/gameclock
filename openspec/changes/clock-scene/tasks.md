@@ -33,8 +33,8 @@
 
 ## 6. Service unit (`pi-deployment`)
 
-- [ ] 6.1 Red: change `scripts/test-unit.sh` to expect `ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 $GAMECLOCKD_ARGS`. Run it in the `gameclock-linux-test` image and see it fail.
-- [ ] 6.2 Green: change `deploy/gameclockd.service` (D5). Change the comment example in the unit so it does not suggest a second PWM-bits value. Verify that `scripts/test-unit.sh` passes.
+- [x] 6.1 Red: change `scripts/test-unit.sh` to expect `ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 $GAMECLOCKD_ARGS`. Run it in the `gameclock-linux-test` image and see it fail.
+- [x] 6.2 Green: change `deploy/gameclockd.service` (D5). Change the comment example in the unit so it does not suggest a second PWM-bits value. Verify that `scripts/test-unit.sh` passes.
 
 ## 7. On-device verification and measurements
 
