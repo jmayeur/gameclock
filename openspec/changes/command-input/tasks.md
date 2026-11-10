@@ -2,7 +2,7 @@
 
 ## 1. ADR
 
-- [ ] 1.1 Write ADR-0016 (command input over a Unix socket, and an event channel for the loop). Add it to the index in `docs/adr/README.md`. Add a status note to ADR-0013: "The deadline wait is changed by ADR-0016." Verify with `scripts/lint-docs.sh` and `git diff docs/adr/0013-time-and-deadline-wait.md`.
+- [x] 1.1 Write ADR-0016 (command input over a Unix socket, and an event channel for the loop). Add it to the index in `docs/adr/README.md`. Add a status note to ADR-0013: "The deadline wait is changed by ADR-0016." Verify with `scripts/lint-docs.sh` and `git diff docs/adr/0013-time-and-deadline-wait.md`.
 
 ## 2. Compositor (`scene-model`)
 
