@@ -47,4 +47,5 @@ operations:
       - If implementation reveals a decision not covered by an ADR, stop and propose the ADR before continuing.
   archive:
     guidance:
+      - Archive as the last commit on the change's PR, after review and before merge (CLAUDE.md Rule 3).
       - Before archiving, confirm docs/design/ and the ADR index match what was built, and update docs/design/roadmap.md.

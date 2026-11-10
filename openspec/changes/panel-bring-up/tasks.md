@@ -68,4 +68,4 @@
 ## Workflow follow-up
 
 - Open one PR for this change from `change/panel-bring-up`.
-- After merge, run `/opsx:archive` once docs/design and the ADR index match what was built and the roadmap is updated.
+- After review and before merge, run `/opsx:archive` on the PR, once docs/design and the ADR index match what was built and the roadmap is updated.

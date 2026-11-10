@@ -52,8 +52,10 @@ No feature code without an OpenSpec change (`openspec/changes/<name>/`):
    also described in the change's `design.md`.
 3. **`/opsx:apply`**: implement red → green (Rule 4; every scenario maps to a
    test) and update the design docs.
-4. **`/opsx:archive`** once merged, so `openspec/specs/` stays the source of
-   truth.
+4. **`/opsx:archive`** as the last commit on the change's PR, after review
+   and before merge. Code and the updated `openspec/specs/` then reach `main`
+   together, so `openspec/specs/` stays the source of truth. Make review
+   changes before archiving, not after.
 
 `openspec/config.yaml` builds these rules into every proposal and task list.
 Keep it in sync with this file. Do feature work on a branch or worktree, one

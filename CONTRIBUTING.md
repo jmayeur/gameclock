@@ -7,7 +7,8 @@ agreement.
    on the behavior and scenarios before writing code. Install the CLI once with
    `npm i -g @fission-ai/openspec@1.17.0` (not the unscoped `openspec`
    package). In Claude Code, run `/opsx:propose`, then `/opsx:apply`, then
-   `/opsx:archive`.
+   `/opsx:archive` as the last commit on the PR, after review and before
+   merge.
 2. **Decisions get an ADR.** That covers dependencies, boundaries, hardware or
    deployment assumptions, licensing, and reversals. See
    [`docs/adr/`](docs/adr/).
