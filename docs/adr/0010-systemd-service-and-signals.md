@@ -7,9 +7,9 @@
 
 ## Context
 
-The daemon has to run unattended on the Pi, survive crashes, and coexist with
-the legacy clock (`clock.svc.service`) while the new stack is still only a test
-pattern. Both drive the same GPIO pins, so they must never run at once.
+The daemon has to run unattended on the Pi and survive crashes. It also has to
+coexist with the legacy clock (`clock.svc.service`) while the new stack is
+still only a test pattern. Both drive the same GPIO pins, so they must never run at once.
 
 hzeller needs root to map GPIO memory, then by default drops privileges to the
 `daemon` user once it is initialized. The public repo can't contain device
@@ -29,7 +29,7 @@ can't call `sigwait` itself.
   `Conflicts=clock.svc.service`: starting either one stops the other, and
   rolling back is one `systemctl start`.
 - **Boot enablement is explicit.** The deploy script installs and restarts the
-  service but doesn't enable it at boot unless asked (`--enable`), and then
+  service. It doesn't enable it at boot unless asked (`--enable`). Then it
   also disables the legacy clock, so exactly one is enabled. `--rollback`
   reverses it.
 - **Driver flags come from** `EnvironmentFile=-/etc/default/gameclockd`
@@ -54,9 +54,9 @@ can't call `sigwait` itself.
   input (`command-input`, `web-control`).
 - The Pi user needs passwordless `sudo` for deploys (the default `pi` user has
   it).
-- If a later change adds input sources, the main thread's wait has to become a
-  wait on several sources (for example `poll` on the signal pipe plus a
-  socket). signal-hook supports that.
+- A later change may add input sources. Then the main thread's wait has to
+  become a wait on several sources (for example `poll` on the signal pipe plus
+  a socket). signal-hook supports that.
 
 ## Alternatives considered
 

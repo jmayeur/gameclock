@@ -1,51 +1,62 @@
 schema: spec-driven
 
-# Constraints an agent cannot infer from the code. CLAUDE.md is the full
-# working agreement; this keeps OpenSpec artifacts consistent with it.
+# Constraints that an agent cannot find in the code. CLAUDE.md has all the
+# rules. This file keeps the OpenSpec artifacts in agreement with CLAUDE.md.
+# Written in strict STE (ADR-0011).
 context: |
-  Target device: Raspberry Pi Zero W, single-core ARMv6, 512 MB RAM. hzeller's
-  LED driver refreshes the 64x32 panel from its own thread on that same core,
-  so app CPU becomes visible flicker. Performance is the primary goal: runtime
-  claims need on-device measurements (CPU %, refresh Hz, RSS), not reasoning.
+  Target device: Raspberry Pi Zero W, one ARMv6 core, 512 MB RAM. hzeller's
+  LED driver refreshes the 64x32 panel from its own thread on the same core.
+  CPU that the app uses causes visible flicker. Performance is the primary
+  goal. A runtime claim needs an on-device measurement (CPU %, refresh Hz,
+  RSS), not reasoning.
 
-  Architecture invariants (docs/adr/0005, 0006): gameclock-core is pure (no
-  hardware, I/O, threads, or wall clock; time and input are injected). It
-  renders into a Frame (embedded-graphics DrawTarget). A Panel only blits frames.
-  The daemon renders on change and sleeps otherwise; no per-frame heap
-  allocation on the hot path. unsafe is allowed only in the driver FFI crate.
+  Architecture invariants (docs/adr/0005, 0006):
+  - gameclock-core is pure. It has no hardware, I/O, threads, or wall clock.
+    The daemon injects time and input.
+  - The core renders into a Frame (an embedded-graphics DrawTarget). A Panel
+    only blits frames.
+  - The daemon renders on change and sleeps at all other times. The hot path
+    does not allocate heap memory for each frame.
+  - unsafe is permitted only in the driver FFI crate.
 
-  License is GPL-2.0-or-later (docs/adr/0003). New dependencies must be
-  GPL-2.0-compatible and pass deny.toml: no Apache-2.0-only and no
-  GPL-3.0/AGPL/LGPL-3.0 crates.
+  The license is GPL-2.0-or-later (docs/adr/0003). Each new dependency must be
+  compatible with GPL-2.0 and pass deny.toml. Apache-2.0-only, GPL-3.0, AGPL,
+  and LGPL-3.0 crates are not permitted.
 
-  This is not a port. docs/design/legacy-behavior.md describes the old clock as
-  reference input; each behavior is re-decided in its proposal, not copied.
+  This is not a port. docs/design/legacy-behavior.md describes the old clock.
+  It is reference input only. Each proposal decides each behavior again.
+
+  All text follows Simplified Technical English (docs/adr/0011, CLAUDE.md
+  Rule 5). Artifacts use STE-flavored mode: sentences of 25 words or fewer,
+  active voice, no semicolons, no phrasal verbs, and one name for one thing.
 
 rules:
   proposal:
-    - List the existing ADRs the change relies on.
-    - If the change adds/removes/swaps a dependency, introduces or moves a boundary (crate, trait, process, protocol), assumes something about hardware or deployment, touches licensing, or reverses a prior decision, name the new ADR it requires.
-    - For changes that affect runtime behavior on the Pi, state the expected CPU/memory impact and how it will be measured.
+    - List the ADRs that the change uses.
+    - Name each new ADR that the change needs. A change needs an ADR if it changes a dependency or a boundary (crate, trait, process, or protocol). It also needs one if it assumes something about hardware or deployment, touches licensing, or reverses a decision.
+    - If the change affects runtime behavior on the Pi, give the expected CPU and memory effect. Say how you will measure it.
     - State what is out of scope.
   specs:
-    - Scenarios must be concrete and testable on the host with injected time and input, unless explicitly marked as on-device scenarios.
+    - Each scenario must be concrete and testable on the host with injected time and input. Mark each exception as an on-device scenario.
+    - Write requirements and scenarios in STE. Keep each sentence at 25 words or fewer.
   design:
-    - Link ADRs for rationale instead of restating it.
-    - A design.md is not a substitute for an ADR; architectural decisions also get an ADR in docs/adr/.
+    - Link ADRs for reasons. Do not repeat the reasons.
+    - A design.md does not replace an ADR. Each architectural decision also gets an ADR in docs/adr/.
   tasks:
-    - Include tasks to write or update any ADRs (and the ADR index in docs/adr/README.md).
+    - Include tasks to write or update each ADR and the ADR index in docs/adr/README.md.
     - Include tasks to update docs/design/ (architecture, glossary, roadmap) and CHANGELOG.md.
-    - Test-first, red -> green (CLAUDE.md Rule 4). Every spec scenario maps to a test. A task that writes the failing test and confirms it fails precedes the task that implements it. Hardware and FFI work starts with a failing check too (build-time assertion, script test, or on-device scenario).
-    - Finish with cargo fmt, cargo clippy --all-targets -D warnings, cargo test, cargo deny check, and the ARMv6 check.
-    - For changes that affect runtime behavior on the Pi, include a task to record on-device measurements in the change.
+    - Work test-first, red then green (CLAUDE.md Rule 4). Each spec scenario maps to a test. The task that writes a failing test and sees it fail comes before the task that implements it. Hardware and FFI work also starts with a failing check (a build-time assertion, a script test, or an on-device scenario).
+    - Finish with cargo fmt, cargo clippy --all-targets -D warnings, cargo test, cargo deny check, the ARMv6 check, and scripts/lint-docs.sh.
+    - If the change affects runtime behavior on the Pi, include a task to record on-device measurements in the change.
 
 operations:
   apply:
     guidance:
-      - Keep gameclock-core pure; push I/O, time, and hardware to gameclockd or a driver crate.
-      - Red -> green -> refactor. Write the test, run it, and see it fail for the expected reason before writing the code. Then make it pass with the least code, then refactor with tests green.
-      - If implementation reveals a decision not covered by an ADR, stop and propose the ADR before continuing.
+      - Keep gameclock-core pure. Put I/O, time, and hardware in gameclockd or a driver crate.
+      - Work red, then green, then refactor. Write the test. Run it and see it fail for the expected reason. Then write the least code that makes it pass. Then refactor while the tests pass.
+      - If the work shows a decision that no ADR covers, stop. Propose the ADR before you continue.
+      - Write code comments, error messages, and log lines in strict STE (CLAUDE.md Rule 5).
   archive:
     guidance:
-      - Archive as the last commit on the change's PR, after review and before merge (CLAUDE.md Rule 3).
-      - Before archiving, confirm docs/design/ and the ADR index match what was built, and update docs/design/roadmap.md.
+      - Make the archive the last commit on the change's PR, after review and before merge (CLAUDE.md Rule 3).
+      - Before the archive, make sure that docs/design/ and the ADR index agree with the code. Update docs/design/roadmap.md.

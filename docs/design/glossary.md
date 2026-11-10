@@ -1,9 +1,9 @@
 # Glossary
 
-- **Frame**: in-memory 64×32 RGB buffer that everything renders into (an
+- **Frame**: the in-memory 64×32 RGB buffer that all rendering goes into (an
   `embedded-graphics` `DrawTarget`).
-- **Panel**: anything that can display a `Frame` at a `Brightness`: the hzeller
-  driver, a simulator, a test recorder. Panels only blit pixels.
+- **Panel**: a thing that shows a `Frame` at a `Brightness`: the hzeller
+  driver, a simulator, or a test recorder. Panels only blit pixels.
 - **Test pattern**: the diagnostic image from `gameclock_core::test_pattern`:
   colored corner markers (orientation), a white border (missing edges), color
   bars (channel order), and a gray ramp (color depth). Not a scene.
@@ -13,7 +13,9 @@
   `--led-pwm-bits`, `--led-slowdown-gpio`, `--led-show-refresh`). `gameclockd`
   passes them to the driver over its Pi defaults (ADR-0009). On the Pi they
   live in `/etc/default/gameclockd`.
-- **Scene** *(planned)*: a self-contained display behavior (clock, message,
+- **STE**: Simplified Technical English (ASD-STE100), the writing standard for
+  all text in the repo (ADR-0011).
+- **Scene** *(planned)*: a self-contained panel behavior (clock, message,
   alert) that renders frames from its own state plus injected time and input.
 - **Compositor** *(planned)*: decides which scene or scenes are visible and
   handles priorities and transitions. The only component that knows about more

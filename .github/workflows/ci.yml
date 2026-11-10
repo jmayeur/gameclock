@@ -50,11 +50,13 @@ jobs:
         run: scripts/clippy-pi.sh
 
   scripts:
-    name: scripts · systemd unit
+    name: scripts · systemd unit · STE
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - run: shellcheck scripts/*.sh
+      - name: Simplified Technical English (ADR-0011)
+        run: scripts/test-lint-docs.sh && scripts/lint-docs.sh
       - run: scripts/test-unit.sh
       - run: scripts/test-deploy.sh
       - run: scripts/test-measure.sh
