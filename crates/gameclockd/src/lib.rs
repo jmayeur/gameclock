@@ -2,6 +2,7 @@
 //! hardware or signals (`openspec/specs/daemon-lifecycle`).
 
 use core::fmt;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -221,18 +222,31 @@ pub fn run<P: Panel>(
     }
 }
 
-/// An argument that is not an hzeller `--led-*` driver flag or
-/// `--test-pattern`.
+/// A command line that the binary does not accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UsageError(pub String);
+pub enum UsageError {
+    /// An argument that is not a `--led-*` driver flag, `--test-pattern`, or
+    /// `--control-socket=<path>`.
+    Unknown(String),
+    /// `--control-socket=` with no path.
+    EmptySocketPath,
+    /// `ctl` with no command or more than one command.
+    Ctl,
+}
 
 impl fmt::Display for UsageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "unknown argument '{}'. gameclockd accepts only --led-* driver flags and --test-pattern.",
-            self.0
-        )
+        match self {
+            Self::Unknown(arg) => write!(
+                f,
+                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
+            ),
+            Self::EmptySocketPath => write!(
+                f,
+                "--control-socket needs a path, for example --control-socket={DEFAULT_SOCKET}."
+            ),
+            Self::Ctl => f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command>"),
+        }
     }
 }
 
@@ -286,33 +300,94 @@ pub struct Args {
     pub mode: Mode,
     /// The `--led-*` flags in their order, for the driver.
     pub driver: Vec<String>,
+    /// The path of the control socket.
+    pub socket: PathBuf,
 }
 
-/// Check the command line. Only `--led-*` driver flags and `--test-pattern`
-/// are accepted. The function gives the driver flags unchanged and in their
-/// order, for the driver to parse (`openspec/specs/daemon-lifecycle`,
-/// docs/adr/0009).
+/// The checked command line of `gameclockd ctl`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CtlArgs {
+    /// The path of the control socket.
+    pub socket: PathBuf,
+    /// The command to send.
+    pub command: String,
+}
+
+/// What the binary runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Invocation {
+    /// The daemon.
+    Daemon(Args),
+    /// The client: send one command (`gameclockd ctl`).
+    Ctl(CtlArgs),
+}
+
+/// The default path of the control socket (docs/adr/0016).
+pub const DEFAULT_SOCKET: &str = "/run/gameclockd/control.sock";
+
+/// The argument that changes the path of the control socket.
+const CONTROL_SOCKET: &str = "--control-socket=";
+
+/// The path of a `--control-socket=<path>` argument, or `None` for another
+/// argument.
+fn socket_path(arg: &str) -> Option<Result<PathBuf, UsageError>> {
+    let path = arg.strip_prefix(CONTROL_SOCKET)?;
+    Some(if path.is_empty() {
+        Err(UsageError::EmptySocketPath)
+    } else {
+        Ok(PathBuf::from(path))
+    })
+}
+
+/// Check the command line. If the first argument is `ctl`, the rest is the
+/// client's command line. Otherwise only `--led-*` driver flags,
+/// `--test-pattern`, and `--control-socket=<path>` are accepted. The
+/// function gives the driver flags unchanged and in their order, for the
+/// driver to parse (`openspec/specs/daemon-lifecycle`, docs/adr/0009).
 ///
 /// # Errors
-/// [`UsageError`] that names the first argument that is not accepted.
-pub fn parse_args<I>(args: I) -> Result<Args, UsageError>
+/// [`UsageError`] for the first argument that is not accepted.
+pub fn parse_args<I>(args: I) -> Result<Invocation, UsageError>
 where
     I: IntoIterator<Item = String>,
 {
+    let mut args = args.into_iter().peekable();
+    if args.peek().is_some_and(|a| a == "ctl") {
+        args.next();
+        return parse_ctl(args).map(Invocation::Ctl);
+    }
     let mut parsed = Args {
         mode: Mode::Clock,
         driver: Vec::new(),
+        socket: PathBuf::from(DEFAULT_SOCKET),
     };
     for arg in args {
         if arg == TEST_PATTERN {
             parsed.mode = Mode::TestPattern;
+        } else if let Some(path) = socket_path(&arg) {
+            parsed.socket = path?;
         } else if arg.starts_with("--led-") {
             parsed.driver.push(arg);
         } else {
-            return Err(UsageError(arg));
+            return Err(UsageError::Unknown(arg));
         }
     }
-    Ok(parsed)
+    Ok(Invocation::Daemon(parsed))
+}
+
+/// The client's arguments: an optional socket path and one command.
+fn parse_ctl(args: impl Iterator<Item = String>) -> Result<CtlArgs, UsageError> {
+    let mut socket = PathBuf::from(DEFAULT_SOCKET);
+    let mut command = None;
+    for arg in args {
+        if let Some(path) = socket_path(&arg) {
+            socket = path?;
+        } else if command.replace(arg).is_some() {
+            return Err(UsageError::Ctl);
+        }
+    }
+    let command = command.ok_or(UsageError::Ctl)?;
+    Ok(CtlArgs { socket, command })
 }
 
 /// A panel for builds without the LED driver. It only logs its presents, so
@@ -362,6 +437,7 @@ mod tests {
     use core::cell::Cell;
     use core::convert::Infallible;
     use std::collections::VecDeque;
+    use std::path::PathBuf;
     use std::rc::Rc;
     use std::sync::mpsc;
 
@@ -578,8 +654,9 @@ mod tests {
         let expected = Args {
             mode: Mode::Clock,
             driver: given.clone(),
+            socket: PathBuf::from(DEFAULT_SOCKET),
         };
-        assert_eq!(parse_args(given), Ok(expected));
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
 
     #[test]
@@ -587,8 +664,9 @@ mod tests {
         let expected = Args {
             mode: Mode::Clock,
             driver: Vec::new(),
+            socket: PathBuf::from(DEFAULT_SOCKET),
         };
-        assert_eq!(parse_args(Vec::new()), Ok(expected));
+        assert_eq!(parse_args(Vec::new()), Ok(Invocation::Daemon(expected)));
     }
 
     #[test]
@@ -601,8 +679,75 @@ mod tests {
         let expected = Args {
             mode: Mode::TestPattern,
             driver: args(&["--led-pwm-bits=8", "--led-slowdown-gpio=1"]),
+            socket: PathBuf::from(DEFAULT_SOCKET),
         };
-        assert_eq!(parse_args(given), Ok(expected));
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn socket_path_is_not_a_driver_flag() {
+        let given = args(&["--control-socket=/tmp/a.sock", "--led-pwm-bits=8"]);
+        let expected = Args {
+            mode: Mode::Clock,
+            driver: args(&["--led-pwm-bits=8"]),
+            socket: PathBuf::from("/tmp/a.sock"),
+        };
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn default_socket_path() {
+        assert_eq!(DEFAULT_SOCKET, "/run/gameclockd/control.sock");
+    }
+
+    #[test]
+    fn empty_socket_path_is_a_usage_error() {
+        let err = parse_args(args(&["--control-socket="])).unwrap_err();
+        assert_eq!(err, UsageError::EmptySocketPath);
+        assert!(err.to_string().contains("--control-socket"), "{err}");
+    }
+
+    #[test]
+    fn ctl_with_a_command() {
+        let expected = CtlArgs {
+            socket: PathBuf::from(DEFAULT_SOCKET),
+            command: "status".into(),
+        };
+        assert_eq!(
+            parse_args(args(&["ctl", "status"])),
+            Ok(Invocation::Ctl(expected))
+        );
+    }
+
+    #[test]
+    fn ctl_with_a_socket_path() {
+        let expected = CtlArgs {
+            socket: PathBuf::from("/tmp/b.sock"),
+            command: "clock".into(),
+        };
+        let given = args(&["ctl", "--control-socket=/tmp/b.sock", "clock"]);
+        assert_eq!(parse_args(given), Ok(Invocation::Ctl(expected)));
+    }
+
+    #[test]
+    fn ctl_needs_exactly_one_command() {
+        for given in [
+            &["ctl"][..],
+            &["ctl", "status", "clock"],
+            &["ctl", "--control-socket=/tmp/c.sock"],
+        ] {
+            assert_eq!(parse_args(args(given)), Err(UsageError::Ctl), "{given:?}");
+        }
+        assert_eq!(
+            UsageError::Ctl.to_string(),
+            "usage: gameclockd ctl [--control-socket=<path>] <command>"
+        );
+    }
+
+    #[test]
+    fn ctl_only_as_the_first_argument() {
+        let err = parse_args(args(&["--test-pattern", "ctl"])).unwrap_err();
+        assert_eq!(err, UsageError::Unknown("ctl".into()));
     }
 
     #[test]
@@ -636,7 +781,7 @@ mod tests {
     #[test]
     fn unknown_argument_is_a_usage_error_naming_it() {
         let err = parse_args(args(&["--led-rows=32", "--frobnicate"])).unwrap_err();
-        assert_eq!(err, UsageError("--frobnicate".into()));
+        assert_eq!(err, UsageError::Unknown("--frobnicate".into()));
         assert!(err.to_string().contains("--frobnicate"), "{err}");
     }
 
@@ -882,8 +1027,8 @@ mod tests {
             "the panel did not show the frame: the LEDs are on fire"
         );
         assert_eq!(
-            UsageError("--frobnicate".into()).to_string(),
-            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags and --test-pattern."
+            UsageError::Unknown("--frobnicate".into()).to_string(),
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
         );
     }
 

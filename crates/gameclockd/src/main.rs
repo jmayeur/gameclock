@@ -15,8 +15,10 @@ use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 
+use gameclockd::control;
 use gameclockd::{
-    ChannelWait, Event, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args, run,
+    ChannelWait, Event, Invocation, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args,
+    run,
 };
 
 /// Exit status for command-line usage errors.
@@ -24,7 +26,16 @@ const USAGE: u8 = 2;
 
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
-        Ok(args) => args,
+        Ok(Invocation::Daemon(args)) => args,
+        Ok(Invocation::Ctl(ctl)) => {
+            let status = control::send_command(
+                &ctl.socket,
+                &ctl.command,
+                &mut std::io::stdout(),
+                &mut std::io::stderr(),
+            );
+            return ExitCode::from(status);
+        }
         Err(e) => {
             eprintln!("gameclockd: {e}");
             return ExitCode::from(USAGE);
@@ -34,7 +45,7 @@ fn main() -> ExitCode {
     // Register before the driver starts. Then a stop signal during
     // initialization is not lost (docs/adr/0010, docs/adr/0016).
     let (events, receiver) = mpsc::channel();
-    if let Err(e) = spawn_signal_thread(events) {
+    if let Err(e) = spawn_signal_thread(events.clone()) {
         eprintln!("gameclockd: cannot register signal handlers: {e}");
         return ExitCode::FAILURE;
     }
@@ -44,6 +55,21 @@ fn main() -> ExitCode {
     eprintln!("{message}");
     let clock = SystemClock::new(zone);
     eprintln!("{}", args.mode.announcement());
+    // Make the socket while the process is still root. The driver drops the
+    // privileges when it starts (docs/adr/0016).
+    let listening = match control::listen(&args.socket) {
+        Ok(listener) => match control::spawn(listener, events) {
+            Ok(()) => true,
+            Err(e) => {
+                no_commands(&args.socket, &e);
+                false
+            }
+        },
+        Err(e) => {
+            no_commands(&args.socket, &e);
+            false
+        }
+    };
 
     let result = {
         let mut panel = match panel::create(&args.driver) {
@@ -66,10 +92,23 @@ fn main() -> ExitCode {
         // driver stops its refresh thread and blanks the LEDs.
     };
 
+    if listening {
+        // On the Pi, the process is no longer root here and cannot remove
+        // the file. systemd removes its directory at stop.
+        let _ = std::fs::remove_file(&args.socket);
+    }
     if let Err(e) = &result {
         eprintln!("gameclockd: {e}");
     }
     ExitCode::from(exit_status(&result))
+}
+
+/// Write the warning for a socket that the daemon cannot use.
+fn no_commands(path: &std::path::Path, e: &dyn std::fmt::Display) {
+    eprintln!(
+        "gameclockd: cannot listen on {}: {e}. The daemon runs with no command input.",
+        path.display()
+    );
 }
 
 /// Register SIGTERM and SIGINT. Start a thread that sends one shutdown event

@@ -102,6 +102,23 @@ impl Daemon {
         }
     }
 
+    /// Move the stderr lines that are there now into `seen`.
+    #[cfg_attr(feature = "simulator", allow(dead_code))]
+    fn collect(&mut self) {
+        while let Ok(line) = self.lines.try_recv() {
+            self.seen.push(line);
+        }
+    }
+
+    /// The number of presents that the logging panel wrote so far.
+    #[cfg_attr(feature = "simulator", allow(dead_code))]
+    fn presents_seen(&self) -> usize {
+        self.seen
+            .iter()
+            .filter(|l| l.contains("presented a"))
+            .count()
+    }
+
     /// All of stdout. Call it after the daemon exits.
     #[cfg_attr(not(feature = "simulator"), allow(dead_code))]
     fn stdout(&self) -> String {
@@ -124,6 +141,35 @@ impl Drop for Daemon {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A new, empty directory for one test, and a socket path in it.
+#[cfg_attr(feature = "simulator", allow(dead_code))]
+fn socket_in_temp_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("gcd-cli-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("make the temporary directory");
+    dir.join("control.sock")
+}
+
+#[cfg_attr(feature = "simulator", allow(dead_code))]
+fn socket_arg(path: &std::path::Path) -> String {
+    format!("--control-socket={}", path.display())
+}
+
+/// Run `gameclockd ctl` with `args`. Give the exit code, stdout, and stderr.
+#[cfg_attr(feature = "simulator", allow(dead_code))]
+fn ctl(args: &[&str]) -> (Option<i32>, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_gameclockd"))
+        .arg("ctl")
+        .args(args)
+        .output()
+        .expect("run gameclockd ctl");
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
 }
 
 /// Tests of the default host build, which uses the logging panel.
@@ -176,6 +222,99 @@ mod log_panel {
         d.wait_for(READY);
         let notice = "gameclockd: no LED driver is built in. Frames are only logged.";
         assert!(d.seen.iter().any(|l| l == notice), "stderr: {:?}", d.seen);
+    }
+
+    // The control socket (openspec/specs/command-input).
+
+    #[test]
+    fn socket_at_the_given_path() {
+        use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+        let path = socket_in_temp_dir("given");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        let meta = std::fs::metadata(&path).expect("a socket file");
+        assert!(meta.file_type().is_socket());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn the_socket_file_goes_away_at_shutdown() {
+        let path = socket_in_temp_dir("shutdown");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        d.signal("TERM");
+        let status = d.exit_within(Duration::from_secs(1));
+        assert_eq!(status.code(), Some(0));
+        assert!(!path.exists(), "{} is still there", path.display());
+    }
+
+    #[test]
+    fn socket_directory_does_not_exist() {
+        let path = socket_in_temp_dir("missing").with_file_name("no-such-dir/control.sock");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        let warning = format!("gameclockd: cannot listen on {}:", path.display());
+        assert!(
+            d.seen.iter().any(|l| l.starts_with(&warning)
+                && l.ends_with("The daemon runs with no command input.")),
+            "stderr: {:?}",
+            d.seen
+        );
+        d.signal("TERM");
+        assert_eq!(d.exit_within(Duration::from_secs(1)).code(), Some(0));
+    }
+
+    #[test]
+    fn the_heartbeat_continues_during_a_silent_connection() {
+        let path = socket_in_temp_dir("silent");
+        let mut d = Daemon::spawn(&["--test-pattern", &socket_arg(&path)]);
+        d.wait_for(READY);
+        let _silent = std::os::unix::net::UnixStream::connect(&path).expect("connect");
+        let before = d.presents_seen();
+        std::thread::sleep(Duration::from_millis(1_100));
+        d.collect();
+        assert!(
+            d.presents_seen() > before,
+            "no present during the connection"
+        );
+    }
+
+    #[test]
+    fn status_through_the_client() {
+        let path = socket_in_temp_dir("status");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        let (code, out, _) = ctl(&[&socket_arg(&path), "status"]);
+        assert_eq!(code, Some(0), "stdout: {out}");
+        assert!(out.starts_with("ok mode=clock"), "{out}");
+    }
+
+    #[test]
+    fn error_reply_through_the_client() {
+        let path = socket_in_temp_dir("error");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        let (code, out, _) = ctl(&[&socket_arg(&path), "frobnicate"]);
+        assert_eq!(code, Some(1));
+        assert!(
+            out.starts_with("error: unknown command 'frobnicate'."),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn no_daemon() {
+        let path = socket_in_temp_dir("none");
+        let (code, _, err) = ctl(&[&socket_arg(&path), "status"]);
+        assert_eq!(code, Some(1));
+        assert!(err.contains(&path.display().to_string()), "{err}");
+    }
+
+    #[test]
+    fn missing_command() {
+        let (code, _, err) = ctl(&[]);
+        assert_eq!(code, Some(2));
+        assert!(err.contains("usage: gameclockd ctl"), "{err}");
     }
 
     #[test]

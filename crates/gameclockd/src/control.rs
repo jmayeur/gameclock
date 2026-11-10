@@ -118,6 +118,40 @@ fn ask(events: &mpsc::Sender<Event>, command: crate::command::Command) -> String
         .unwrap_or_else(|_| NO_ANSWER.to_owned())
 }
 
+/// The time the client waits for the reply.
+pub const CLIENT_LIMIT: Duration = Duration::from_secs(3);
+
+/// Send `command` to the socket at `path` and write the reply line to `out`.
+/// Write a connection error to `err`. Give the exit status: 0 for an `ok`
+/// reply, 1 for an error reply or a failure.
+pub fn send_command(path: &Path, command: &str, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    match exchange(path, command) {
+        Ok(reply) => {
+            let _ = writeln!(out, "{reply}");
+            u8::from(!(reply == "ok" || reply.starts_with("ok ")))
+        }
+        Err(e) => {
+            let _ = writeln!(
+                err,
+                "gameclockd: cannot get a reply from {}: {e}",
+                path.display()
+            );
+            1
+        }
+    }
+}
+
+fn exchange(path: &Path, command: &str) -> io::Result<String> {
+    let mut stream = UnixStream::connect(path)?;
+    stream.write_all(command.as_bytes())?;
+    stream.write_all(b"\n")?;
+    stream.shutdown(std::net::Shutdown::Write)?;
+    stream.set_read_timeout(Some(CLIENT_LIMIT))?;
+    let mut reply = String::new();
+    stream.read_to_string(&mut reply)?;
+    Ok(reply.trim_end_matches('\n').to_owned())
+}
+
 enum Line {
     /// The bytes before the line feed or the end of the stream.
     Complete(Vec<u8>),

@@ -25,10 +25,10 @@
 
 - [x] 5.1 Red: write socket tests in a temporary directory. The file mode is 0600. A stale file is replaced. A live socket is not taken. Also write "Silent client is closed" and "Loop does not answer" with a fake loop. See them fail because the socket code does not exist.
 - [x] 5.2 Green: add the listener setup and the socket thread with its 1 s read limit and 2 s reply limit (D2, D3). Verify that the 5.1 tests pass.
-- [ ] 5.3 Red: write `parse_args` tests for "Socket path is not a driver flag", "Default socket path", "Empty socket path is a usage error", and the `ctl` forms. Change the existing tests to the new result type. See them fail.
-- [ ] 5.4 Green: add `Invocation`, `CtlArgs`, and the socket path in `Args` (D7). Verify that the 5.3 tests pass.
-- [ ] 5.5 Red: write `tests/cli.rs` tests for "Socket at the given path" and "The socket file goes away at shutdown". Also write "Socket directory does not exist" and "The heartbeat continues during a silent connection". Also write "Status through the client", "Error reply through the client", "No daemon", and "Missing command". Run the SIGTERM and SIGINT tests too. See the new tests fail.
-- [ ] 5.6 Green: change `main.rs`: the signal thread, the socket before the panel, the `ctl` client, and the removal of the socket file at exit. Verify that all `tests/cli.rs` tests pass in the default and the `simulator` builds.
+- [x] 5.3 Red: write `parse_args` tests for "Socket path is not a driver flag", "Default socket path", "Empty socket path is a usage error", and the `ctl` forms. Change the existing tests to the new result type. See them fail.
+- [x] 5.4 Green: add `Invocation`, `CtlArgs`, and the socket path in `Args` (D7). Verify that the 5.3 tests pass.
+- [x] 5.5 Red: write `tests/cli.rs` tests for "Socket at the given path" and "The socket file goes away at shutdown". Also write "Socket directory does not exist" and "The heartbeat continues during a silent connection". Also write "Status through the client", "Error reply through the client", "No daemon", and "Missing command". Run the SIGTERM and SIGINT tests too. See the new tests fail.
+- [x] 5.6 Green: change `main.rs`: the signal thread, the socket before the panel, the `ctl` client, and the removal of the socket file at exit. Verify that all `tests/cli.rs` tests pass in the default and the `simulator` builds.
 
 ## 6. Service unit (`pi-deployment`)
 
