@@ -59,4 +59,4 @@ done
 if [ "$problems" -gt 0 ]; then
     exit 1
 fi
-echo "ok: $bin is ARMv6 ($arch) hard-float, glibc <= $MAX_GLIBC (newest GLIBC_${newest:-none}), needs: $(echo $needed)"
+echo "ok: $bin is ARMv6 ($arch) hard-float, glibc <= $MAX_GLIBC (newest GLIBC_${newest:-none}), needs: $(printf '%s' "$needed" | tr '\n' ' ')"

@@ -41,10 +41,10 @@
 
 ## 6. Deploy and measurement scripts
 
-- [ ] 6.1 Red: add a `scripts/test-unit.sh` check that runs `systemd-analyze verify` and asserts the unit has `Conflicts=clock.svc.service`, `Restart=on-failure`, no `User=`, and the `EnvironmentFile`; see it fail with no unit. Then add `deploy/gameclockd.service` per design D8 until it passes (Linux machine or CI).
-- [ ] 6.2 Write a test (see it fail first) for "Deploy without a host refuses" (stub `ssh`/`scp` on `PATH` that fail if called), then write `scripts/deploy.sh` with default, `--enable`, and `--rollback` modes. Verify the test and `shellcheck scripts/*.sh` pass.
-- [ ] 6.3 Write `scripts/test-measure.sh` (see it fail first) for "Idle process measures near zero", "Busy process measures near one core", and "Threads are reported separately", then write `scripts/measure.sh` (POSIX `sh`, total and per-thread CPU %, `VmRSS`, voluntary context switches). Verify the test passes on Linux (CI or a container).
-- [ ] 6.4 Document building, deploying, rolling back, and measuring in `CONTRIBUTING.md`. Verify the documented commands match the scripts' flags.
+- [x] 6.1 Red: add a `scripts/test-unit.sh` check that runs `systemd-analyze verify` and asserts the unit has `Conflicts=clock.svc.service`, `Restart=on-failure`, no `User=`, and the `EnvironmentFile`; see it fail with no unit. Then add `deploy/gameclockd.service` per design D8 until it passes (Linux machine or CI).
+- [x] 6.2 Write a test (see it fail first) for "Deploy without a host refuses" (stub `ssh`/`scp` on `PATH` that fail if called), then write `scripts/deploy.sh` with default, `--enable`, and `--rollback` modes. Verify the test and `shellcheck scripts/*.sh` pass.
+- [x] 6.3 Write `scripts/test-measure.sh` (see it fail first) for "Idle process measures near zero", "Busy process measures near one core", and "Threads are reported separately", then write `scripts/measure.sh` (POSIX `sh`, total and per-thread CPU %, `VmRSS`, voluntary context switches). Verify the test passes on Linux (CI or a container).
+- [x] 6.4 Document building, deploying, rolling back, and measuring in `CONTRIBUTING.md`. Verify the documented commands match the scripts' flags.
 
 ## 7. CI
 

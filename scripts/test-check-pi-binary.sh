@@ -14,15 +14,15 @@ int main(void) { puts("hi"); return 0; }
 C
 : >"$work/empty.c"
 
-pi="-target arm-linux-gnueabihf.2.28 -mcpu=arm1176jzf_s"
-zig cc $pi -o "$work/good" "$work/main.c"
+pi_cc() { zig cc -target arm-linux-gnueabihf.2.28 -mcpu=arm1176jzf_s "$@"; }
+pi_cc -o "$work/good" "$work/main.c"
 zig cc -target arm-linux-gnueabihf.2.28 -mcpu=cortex_a7 -o "$work/armv7" "$work/main.c"
 zig cc -target arm-linux-gnueabi.2.28 -mcpu=arm1176jzf_s -o "$work/softfloat" "$work/main.c"
 zig cc -target arm-linux-gnueabihf.2.34 -mcpu=arm1176jzf_s -o "$work/glibc234" "$work/main.c"
 # A stand-in shared library whose soname is libstdc++. Linked by path:
 # zig maps -lstdc++ to its own static libc++, which would hide the dependency.
-zig cc $pi -shared -Wl,-soname,libstdc++.so.6 -o "$work/fakecxx.so" "$work/empty.c"
-zig cc $pi -o "$work/cxxdep" "$work/main.c" -Wl,--no-as-needed "$work/fakecxx.so"
+pi_cc -shared -Wl,-soname,libstdc++.so.6 -o "$work/fakecxx.so" "$work/empty.c"
+pi_cc -o "$work/cxxdep" "$work/main.c" -Wl,--no-as-needed "$work/fakecxx.so"
 zig cc -o "$work/host" "$work/main.c"
 
 failures=0

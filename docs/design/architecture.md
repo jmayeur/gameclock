@@ -62,6 +62,10 @@
    and blanks the LEDs) and the process exits 0. Panel errors exit 1 with the
    message on stderr.
 
+On the Pi it runs as the `gameclockd` systemd service
+(`deploy/gameclockd.service`, installed by `scripts/deploy.sh`), which
+conflicts with the legacy `clock.svc.service` (ADR-0010).
+
 ## Data flow (planned)
 
 1. The loop wakes on a deadline (the next visual change) or on input.

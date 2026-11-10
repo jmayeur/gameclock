@@ -1,0 +1,20 @@
+# gameclockd: the game clock LED matrix daemon (docs/adr/0010).
+# Installed to /etc/systemd/system/ by scripts/deploy.sh.
+[Unit]
+Description=Game clock LED matrix daemon
+Documentation=https://github.com/jmayeur/gameclock
+# Both drive the same GPIO pins: starting either one stops the other.
+Conflicts=clock.svc.service
+
+[Service]
+Type=simple
+# Driver tuning without a rebuild, e.g.
+#   GAMECLOCKD_ARGS=--led-pwm-bits=7 --led-slowdown-gpio=1
+EnvironmentFile=-/etc/default/gameclockd
+# Starts as root to map GPIO; hzeller drops to the 'daemon' user after init.
+ExecStart=/usr/local/bin/gameclockd $GAMECLOCKD_ARGS
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

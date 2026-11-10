@@ -40,7 +40,55 @@ need any of this.
 git submodule update --init          # vendor/rpi-rgb-led-matrix, pinned
 brew install zig                     # 0.17.1 (CI pins the same version)
 cargo install --locked cargo-zigbuild@0.24.1
+brew install binutils                # readelf, for check-pi-binary.sh (macOS)
 ```
+
+```bash
+scripts/build-pi.sh                  # -> target/arm-unknown-linux-gnueabihf/release/gameclockd
+scripts/check-pi-binary.sh target/arm-unknown-linux-gnueabihf/release/gameclockd
+scripts/clippy-pi.sh                 # lints the driver code host clippy can't see
+```
+
+## Deploying to the Pi
+
+`GAMECLOCK_HOST` is the Pi's ssh destination (`user@host` or an `~/.ssh/config`
+alias). It stays in your environment, never in the repo. The Pi user needs
+passwordless `sudo`.
+
+```bash
+GAMECLOCK_HOST=pi@<host> scripts/deploy.sh             # build, install, restart (stops the legacy clock)
+GAMECLOCK_HOST=pi@<host> scripts/deploy.sh --enable    # ...and make gameclockd the boot service
+GAMECLOCK_HOST=pi@<host> scripts/deploy.sh --rollback  # back to the legacy clock, now and at boot
+```
+
+Driver flags go in `/etc/default/gameclockd` on the Pi, for example
+`GAMECLOCKD_ARGS=--led-pwm-bits=7 --led-show-refresh`, then
+`sudo systemctl restart gameclockd`.
+
+## Measuring on the Pi
+
+Copy `scripts/measure.sh` to the Pi and run it against a process:
+
+```bash
+sh measure.sh "$(pidof gameclockd)" 60
+```
+
+It prints CPU % of one core (total and per thread), RSS, and voluntary context
+switches per thread. For refresh rate, add `--led-show-refresh` to the driver
+flags and read the driver's output with `journalctl -u gameclockd -f`.
+
+## Script tests
+
+```bash
+scripts/test-check-pi-binary.sh      # needs zig and readelf
+scripts/test-deploy.sh               # stub ssh/scp, runs anywhere
+scripts/test-unit.sh                 # Linux: needs systemd-analyze
+scripts/test-measure.sh              # Linux: needs /proc and a C compiler
+```
+
+On macOS, run the Linux ones in a container, for example a Debian image with
+`systemd gcc libc6-dev procps` installed:
+`docker run --rm -v "$PWD":/w -w /w <image> scripts/test-measure.sh`.
 
 Keep commits small, with an imperative subject line. Reference the ADR or
 OpenSpec change where relevant. By contributing, you agree your contribution is
