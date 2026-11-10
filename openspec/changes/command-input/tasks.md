@@ -11,8 +11,8 @@
 
 ## 3. Commands and replies (`command-input`)
 
-- [ ] 3.1 Red: write `parse_command` tests for "Unknown command", "Line too long", "Text that is not UTF-8", and "Spaces around the command". Also test that `clock`, `test-pattern`, and `status` parse. Write tests for the exact text of each reply. See them fail because the items do not exist.
-- [ ] 3.2 Green: add `Command`, `CommandError`, `parse_command`, and the reply functions (D4). Verify that the 3.1 tests pass.
+- [x] 3.1 Red: write `parse_command` tests for "Unknown command", "Line too long", "Text that is not UTF-8", and "Spaces around the command". Also test that `clock`, `test-pattern`, and `status` parse. Write tests for the exact text of each reply. See them fail because the items do not exist.
+- [x] 3.2 Green: add `Command`, `CommandError`, `parse_command`, and the reply functions (D4). Verify that the 3.1 tests pass.
 
 ## 4. Event channel and loop (`daemon-lifecycle`, `command-input`)
 

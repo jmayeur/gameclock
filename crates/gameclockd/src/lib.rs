@@ -9,6 +9,8 @@ use std::time::Duration;
 #[cfg(feature = "simulator")]
 pub mod sim;
 
+pub mod command;
+
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
 use gameclock_core::schedule::Schedule;
@@ -220,6 +222,15 @@ impl Mode {
         match self {
             Self::Clock => Box::new(ClockScene::new(Schedule::legacy())),
             Self::TestPattern => Box::new(Heartbeat),
+        }
+    }
+
+    /// The name of the mode in commands and replies.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Clock => "clock",
+            Self::TestPattern => "test-pattern",
         }
     }
 
