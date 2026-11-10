@@ -50,16 +50,39 @@ No feature code without an OpenSpec change (`openspec/changes/<name>/`):
    still fuzzy.
 2. Record any ADR the change needs. An ADR is required even if the decision is
    also described in the change's `design.md`.
-3. **`/opsx:apply`**: implement test-first (every scenario maps to a test) and
-   update the design docs.
-4. **`/opsx:archive`** once merged, so `openspec/specs/` stays the source of
-   truth.
+3. **`/opsx:apply`**: implement red → green (Rule 4; every scenario maps to a
+   test) and update the design docs.
+4. **`/opsx:archive`** as the last commit on the change's PR, after review
+   and before merge. Code and the updated `openspec/specs/` then reach `main`
+   together, so `openspec/specs/` stays the source of truth. Make review
+   changes before archiving, not after.
 
 `openspec/config.yaml` builds these rules into every proposal and task list.
 Keep it in sync with this file. Do feature work on a branch or worktree, one
 change per PR.
 
 Refactors, dependency bumps, and doc fixes don't need a change proposal.
+
+## Rule 4: build test-first, red → green → refactor
+
+All code, including features, bug fixes, scripts, and build tooling, is
+written test-driven:
+
+1. **Red.** Write the test first. Run it and watch it fail *for the expected
+   reason* (an assertion or a missing item, not a typo). A test that has never
+   failed proves nothing.
+2. **Green.** Write the least code that makes it pass. Run it and see it pass.
+3. **Refactor** with the tests green, then run the full checks.
+
+- Every spec scenario maps to a test that went through red first. OpenSpec
+  task lists put each "write failing tests" task before its implementation
+  task.
+- A bug fix starts with a test that reproduces the bug.
+- Code that can't run on a laptop (FFI, hardware) still starts red: write the
+  check first (a build-time assertion, a script test, or an on-device scenario
+  in the change) and see it fail before making it pass.
+- Commits stay green: commit a test together with the code that makes it pass,
+  so `main` and every bisect point build and pass.
 
 ## Architecture invariants (changing these needs an ADR)
 

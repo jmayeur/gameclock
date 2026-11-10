@@ -1,7 +1,7 @@
 # Architecture
 
-> Current state as of the initial scaffold. Sections marked **Planned** describe
-> the agreed direction (ADRs 0004–0006) and become current as OpenSpec changes
+> Current state as of panel bring-up. Sections marked **Planned** describe the
+> agreed direction (ADRs 0004–0006) and become current as OpenSpec changes
 > land.
 
 ## Shape
@@ -22,10 +22,9 @@
 
 | Crate | Status | Responsibility |
 |---|---|---|
-| `gameclock-core` | **Exists** | Pure logic. `Frame` (a row-major RGB buffer that implements `embedded-graphics`' `DrawTarget`), the `Panel` trait, and `Brightness`. No hardware, I/O, threads, or wall clock (ADR-0005). |
-| `gameclockd` | **Exists (stub)** | The daemon. Will own the event loop, time source, config, command input, and panel selection. |
-| `rgbmatrix-sys` | **Planned** | Hand-written FFI to hzeller's C API, plus a `build.rs` that compiles the vendored, pinned submodule (ADR-0004). The only crate allowed `unsafe`. |
-| hzeller `Panel` | **Planned** | A safe wrapper that implements `Panel` by copying a `Frame` into an offscreen canvas and swapping on vsync. |
+| `gameclock-core` | **Exists** | Pure logic. `Frame` (a row-major RGB buffer that implements `embedded-graphics`' `DrawTarget`), the `Panel` trait, `Brightness`, and the diagnostic `test_pattern`. No hardware, I/O, threads, or wall clock (ADR-0005). |
+| `gameclockd` | **Exists** | The daemon. Today: argument check, signal handling, panel choice by build feature, and the startup/idle/shutdown lifecycle. Planned: the event loop, time source, config, and command input. |
+| `rgbmatrix-sys` | **Exists** | The LED driver, and the only crate allowed `unsafe` (ADR-0004, ADR-0009). Always: Pi driver defaults (`options`), frame-to-driver-buffer conversion (`convert`), and `Error`, all host-tested. With the `link` feature: `build.rs` compiles the vendored hzeller submodule (`vendor/rpi-rgb-led-matrix`) with zig, hand-written FFI (`ffi`) with a build-time struct-layout check, and `HzellerPanel`, which implements `Panel`. |
 | simulator `Panel` | **Planned** | Shows frames on a dev machine (terminal truecolor and/or a window). |
 
 ## Key types (current)
@@ -36,6 +35,36 @@
 - **`Panel`**: `dimensions()` and `present(&Frame, Brightness)`. Implementations
   only blit pixels.
 - **`Brightness`**: a percentage clamped to 0–100.
+- **`HzellerPanel`** (`rgbmatrix-sys`, `link` only): created from `--led-*`
+  flags over the Pi defaults. `present` checks the frame's size, converts it
+  into a preallocated buffer, sets the driver brightness, copies the buffer to
+  an offscreen canvas in one call, and swaps it in on vsync. Dropping it stops
+  hzeller's refresh thread and blanks the panel.
+- **`test_pattern::render`**: draws the diagnostic test pattern into any
+  `Rgb888` `DrawTarget` (normally a `Frame`). Depends only on the target's size.
+
+## Daemon lifecycle (current)
+
+`gameclockd` (ADR-0009, ADR-0010):
+
+1. **Arguments.** Only hzeller `--led-*` flags are accepted (`parse_args`);
+   anything else exits 2 before the panel is touched.
+2. **Signals.** SIGTERM and SIGINT are registered with `signal-hook` before
+   the driver starts.
+3. **Panel, chosen at build time.** With the `hzeller` feature (the Pi build,
+   `scripts/build-pi.sh`), `HzellerPanel::new` gets the flags. Without it,
+   `LogPanel` logs each present to stderr, and any `--led-*` flags are ignored
+   with a notice.
+4. **Run.** `run` renders `test_pattern` into a panel-sized `Frame`, presents
+   it once at full brightness, then blocks on the signal iterator. Idle is a
+   blocked read with no timer and no extra thread.
+5. **Shutdown.** On a signal the panel drops (hzeller stops its refresh thread
+   and blanks the LEDs) and the process exits 0. Panel errors exit 1 with the
+   message on stderr.
+
+On the Pi it runs as the `gameclockd` systemd service
+(`deploy/gameclockd.service`, installed by `scripts/deploy.sh`), which
+conflicts with the legacy `clock.svc.service` (ADR-0010).
 
 ## Data flow (planned)
 

@@ -4,6 +4,15 @@
   `embedded-graphics` `DrawTarget`).
 - **Panel**: anything that can display a `Frame` at a `Brightness`: the hzeller
   driver, a simulator, a test recorder. Panels only blit pixels.
+- **Test pattern**: the diagnostic image from `gameclock_core::test_pattern`:
+  colored corner markers (orientation), a white border (missing edges), color
+  bars (channel order), and a gray ramp (color depth). Not a scene.
+- **LogPanel**: the `Panel` used by builds without the LED driver. It only
+  logs what it would show, so the daemon runs on any machine.
+- **Driver flags**: hzeller's `--led-*` command-line options (for example
+  `--led-pwm-bits`, `--led-slowdown-gpio`, `--led-show-refresh`). `gameclockd`
+  passes them to the driver over its Pi defaults (ADR-0009). On the Pi they
+  live in `/etc/default/gameclockd`.
 - **Scene** *(planned)*: a self-contained display behavior (clock, message,
   alert) that renders frames from its own state plus injected time and input.
 - **Compositor** *(planned)*: decides which scene or scenes are visible and

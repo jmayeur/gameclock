@@ -27,3 +27,5 @@ zero-padded) and add it to the index below.
 | [0006](0006-render-on-change.md) | Render on change, within a measured CPU budget | Accepted |
 | [0007](0007-target-and-cross-compilation.md) | Target ARMv6 / glibc 2.28, cross-compile with cargo-zigbuild | Accepted |
 | [0008](0008-openspec.md) | Drive features with OpenSpec | Accepted |
+| [0009](0009-driver-crate-layout-and-flags.md) | Driver crate layout, feature-gated C++ build, pass-through driver flags | Accepted |
+| [0010](0010-systemd-service-and-signals.md) | Run as a root systemd service with signal-driven shutdown | Accepted |

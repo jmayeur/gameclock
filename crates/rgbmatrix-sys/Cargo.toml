@@ -1,0 +1,26 @@
+[package]
+name = "rgbmatrix-sys"
+description = "FFI to hzeller's rpi-rgb-led-matrix C API and a safe gameclock Panel over it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The crate links hzeller's GPL-2.0-only library when `link` is enabled; our
+# own code stays GPL-2.0-or-later (docs/adr/0003).
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+links = "rgbmatrix"
+
+# docs/adr/0009: the C++ driver is built and linked only with `link`. Without
+# it, only the pure, host-testable parts (defaults, conversion) compile.
+[features]
+link = ["dep:cc"]
+
+[dependencies]
+gameclock-core.workspace = true
+
+[build-dependencies]
+cc = { workspace = true, optional = true }
+
+[lints]
+workspace = true

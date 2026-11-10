@@ -22,9 +22,16 @@ code implies. They drive the driver defaults (ADR-0004) and the build target
 |---|---|
 | Panel | 64×32 HUB75, single panel, no chain or parallel |
 | Interface | Adafruit RGB Matrix HAT (the legacy installer supported HAT and Bonnet) |
-| GPIO mapping | `adafruit-hat`. The service passes no mapping flag, so it is probably compiled in by the Adafruit installer. Confirm at bring-up. |
-| Hardware pulse | `notes.md` used `--led-no-hardware-pulse`. With audio off, hardware pulse may work and would improve image quality. Test at bring-up. |
-| PWM solder mod (GPIO4↔18) | Unknown; the legacy hints suggest not. That would mean the `adafruit-hat` mapping rather than `adafruit-hat-pwm`. |
+| GPIO mapping | `adafruit-hat`, confirmed at bring-up: the `gameclockd` test pattern is right with it. The legacy service passes no mapping flag. Its Python module has its own driver build. |
+| Hardware pulse | Needs the GPIO4↔18 jumper and `adafruit-hat-pwm`. Audio is already off, as hardware pulse requires. Not tested yet. |
+| PWM solder mod (GPIO4↔18) | Not fitted. It is the candidate fix for the shimmer glitches seen at bring-up (see below). |
+
+## Driver used by gameclockd
+
+hzeller `rpi-rgb-led-matrix` is vendored as a submodule at
+`vendor/rpi-rgb-led-matrix`, pinned to
+`3da7a3bdfca4637bb79ff038bc2bb26965197db5` (2026-10-24). It is statically
+linked into the binary, so the Pi's own 2023 copy is not used (ADR-0009).
 
 ## Software currently on the device
 
@@ -33,14 +40,28 @@ code implies. They drive the driver defaults (ADR-0004) and the build target
 - Service `clock.svc.service`:
   `sudo /usr/bin/python .../bindings/python/samples/clock.py --led-cols=64 --led-rows=32`.
 - Command file `.../samples/semaphore/msg.txt` (mode 0777).
-- Python 3.7.3, Node 10.24.0.
+- The clock runs on Python 2.7 (`/usr/bin/python`). Its driver is linked
+  into `/usr/local/lib/python2.7/dist-packages/rgbmatrix/core.so`. Python
+  3.7.3 and Node 10.24.0 are also installed.
+- `samplebase.py` sets `--led-scan-mode=1` (interlaced) by default, and the
+  clock changes brightness by time of day.
 
 ## Tuning notes for a single-core Zero
 
-- `--led-slowdown-gpio`: the Zero is slow enough that 0 or 1 usually works.
-  Lower values give faster refresh.
-- `--led-pwm-bits`: fewer bits mean less refresh-thread CPU and a higher
-  refresh rate. A clock doesn't need 11 bits of color depth. Measure this.
+Measured at bring-up
+(`openspec/changes/archive/2026-11-09-panel-bring-up/measurements.md`):
+
+- The refresh thread uses about 52% of the core with the default settings.
+  The application uses close to none.
+- `--led-slowdown-gpio`: 1 (the default) is right for this panel. 0 gives
+  wrong colors. 2 gives more glitches.
+- `--led-pwm-bits=8`: 157 Hz instead of 147 Hz, and 49.5% CPU instead of
+  52%. A clock doesn't need 11 bits of color depth.
+- `--led-scan-mode=1` (interlaced): no visible change and no change in refresh
+  rate.
+- Known issue: random shimmer glitches, mainly when the whole panel is lit.
+  The legacy clock has them too, less often. Software settings did not
+  remove them. Try the GPIO4↔18 jumper with `adafruit-hat-pwm`.
 - `--led-limit-refresh-rate-hz`: caps the refresh thread so the app keeps some
   CPU.
 - hzeller drops root privileges to `daemon` after initialising unless told
@@ -48,7 +69,8 @@ code implies. They drive the driver defaults (ADR-0004) and the build target
 
 ## Open items
 
-- [ ] Confirm the GPIO mapping and whether hardware pulse works (panel bring-up).
-- [ ] Measure the legacy baseline: CPU %, refresh Hz, RSS (panel bring-up).
+- [x] Confirm the GPIO mapping (panel bring-up): `adafruit-hat`.
+- [x] Measure the legacy baseline: CPU %, refresh Hz, RSS (panel bring-up).
+- [ ] Fit the GPIO4↔18 jumper and test hardware pulse with `adafruit-hat-pwm`.
 - [ ] Decide whether to reflash to current Raspberry Pi OS Lite 32-bit
   (ADR-0007). Not required.

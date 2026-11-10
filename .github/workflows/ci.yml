@@ -25,6 +25,40 @@ jobs:
       - name: Type-check for Pi Zero W (ARMv6)
         run: cargo check --locked --target arm-unknown-linux-gnueabihf
 
+  pi-build:
+    name: Pi build (ARMv6, LED driver)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true   # vendor/rpi-rgb-led-matrix (ADR-0009)
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+      # Keep in sync with CONTRIBUTING.md.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.24.1
+      - name: Binary checker tests
+        run: scripts/test-check-pi-binary.sh
+      - name: Build gameclockd for the Pi Zero W
+        run: scripts/build-pi.sh
+      - name: Check the binary runs on the Pi as-is
+        run: scripts/check-pi-binary.sh target/arm-unknown-linux-gnueabihf/release/gameclockd
+      - name: Clippy on the driver code (Pi target)
+        run: scripts/clippy-pi.sh
+
+  scripts:
+    name: scripts · systemd unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck scripts/*.sh
+      - run: scripts/test-unit.sh
+      - run: scripts/test-deploy.sh
+      - run: scripts/test-measure.sh
+
   openspec:
     name: openspec validate
     runs-on: ubuntu-latest
