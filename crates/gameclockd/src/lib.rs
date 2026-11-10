@@ -2,8 +2,6 @@
 //! hardware or signals (`openspec/specs/daemon-lifecycle`).
 
 use core::fmt;
-use std::io::{self, Read};
-use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -103,58 +101,41 @@ pub trait Wait {
     fn wait(&mut self, deadline: Option<Timestamp>, now: Timestamp) -> Wake;
 }
 
-/// Waits on the read end of the signal pipe (docs/adr/0013).
+/// Waits on the event channel, with a timeout until the deadline
+/// (docs/adr/0016).
 ///
-/// `main` registers SIGTERM and SIGINT to write a byte to the other end. A
-/// byte means a stop signal. The read timeout ends the wait at the deadline.
-/// A signal that comes during a render stays in the pipe, so the next wait
-/// ends at once.
+/// The signal thread and the socket thread send the events. A closed channel
+/// means that no thread can send a stop signal. The daemon then stops.
 #[derive(Debug)]
-pub struct SignalWait {
-    pipe: UnixStream,
+pub struct ChannelWait {
+    events: mpsc::Receiver<Event>,
 }
 
-impl SignalWait {
-    /// A wait on `pipe`, the read end of the signal pipe.
+impl ChannelWait {
+    /// A wait on `events`.
     #[must_use]
-    pub fn new(pipe: UnixStream) -> Self {
-        Self { pipe }
+    pub fn new(events: mpsc::Receiver<Event>) -> Self {
+        Self { events }
     }
 }
 
-impl Wait for SignalWait {
+impl Wait for ChannelWait {
     fn wait(&mut self, deadline: Option<Timestamp>, now: Timestamp) -> Wake {
-        let timeout = match deadline {
-            None => None,
+        let event = match deadline {
+            None => self
+                .events
+                .recv()
+                .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
             Some(deadline) => match Duration::try_from(deadline.duration_since(now)) {
-                Ok(d) if !d.is_zero() => Some(d),
+                Ok(d) if !d.is_zero() => self.events.recv_timeout(d),
                 // The deadline is now or in the past.
                 _ => return Wake::Deadline,
             },
         };
-        if let Err(e) = self.pipe.set_read_timeout(timeout) {
-            eprintln!("gameclockd: the wait failed: {e}. The daemon stops.");
-            return Wake::Shutdown;
-        }
-        let mut byte = [0_u8; 1];
-        match self.pipe.read(&mut byte) {
-            // A byte is a stop signal. End of file means that the signal
-            // handlers are gone, so stop too. Do not loop on it.
-            Ok(_) => Wake::Shutdown,
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    io::ErrorKind::WouldBlock
-                        | io::ErrorKind::TimedOut
-                        | io::ErrorKind::Interrupted
-                ) =>
-            {
-                Wake::Deadline
-            }
-            Err(e) => {
-                eprintln!("gameclockd: the wait failed: {e}. The daemon stops.");
-                Wake::Shutdown
-            }
+        match event {
+            Ok(Event::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => Wake::Shutdown,
+            Ok(Event::Command(request)) => Wake::Command(request),
+            Err(mpsc::RecvTimeoutError::Timeout) => Wake::Deadline,
         }
     }
 }
@@ -918,15 +899,13 @@ mod tests {
         assert_eq!(exit_status(&result), 0);
     }
 
-    mod signal_wait {
+    mod channel_wait {
         use super::*;
-        use std::io::Write;
-        use std::os::unix::net::UnixStream;
         use std::time::{Duration, Instant};
 
-        fn pair() -> (SignalWait, UnixStream) {
-            let (read, write) = UnixStream::pair().unwrap();
-            (SignalWait::new(read), write)
+        fn channel() -> (ChannelWait, mpsc::Sender<Event>) {
+            let (tx, rx) = mpsc::channel();
+            (ChannelWait::new(rx), tx)
         }
 
         fn now_plus(ms: i64) -> (Option<Timestamp>, Timestamp) {
@@ -937,7 +916,7 @@ mod tests {
 
         #[test]
         fn past_deadline_ends_at_once() {
-            let (mut wait, _write) = pair();
+            let (mut wait, _tx) = channel();
             let (deadline, now) = now_plus(-10);
             let start = Instant::now();
             assert!(matches!(wait.wait(deadline, now), Wake::Deadline));
@@ -946,7 +925,7 @@ mod tests {
 
         #[test]
         fn deadline_ends_the_wait_after_its_time() {
-            let (mut wait, _write) = pair();
+            let (mut wait, _tx) = channel();
             let (deadline, now) = now_plus(50);
             let start = Instant::now();
             assert!(matches!(wait.wait(deadline, now), Wake::Deadline));
@@ -958,28 +937,43 @@ mod tests {
         }
 
         #[test]
-        fn a_byte_in_the_pipe_is_a_shutdown() {
-            let (mut wait, mut write) = pair();
-            write.write_all(&[1]).unwrap();
+        fn a_shutdown_event_is_a_shutdown() {
+            let (mut wait, tx) = channel();
+            tx.send(Event::Shutdown).unwrap();
             let (deadline, now) = now_plus(5_000);
             assert!(matches!(wait.wait(deadline, now), Wake::Shutdown));
         }
 
         #[test]
-        fn closed_pipe_is_a_shutdown() {
-            let (mut wait, write) = pair();
-            drop(write);
+        fn a_request_is_a_command() {
+            let (mut wait, tx) = channel();
+            let (reply, _rx) = mpsc::channel();
+            let request = Request {
+                command: Command::Status,
+                reply,
+            };
+            tx.send(Event::Command(request)).unwrap();
+            match wait.wait(None, Timestamp::now()) {
+                Wake::Command(r) => assert_eq!(r.command, Command::Status),
+                other => panic!("expected a command, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn closed_channel_is_a_shutdown() {
+            let (mut wait, tx) = channel();
+            drop(tx);
             assert!(matches!(wait.wait(None, Timestamp::now()), Wake::Shutdown));
         }
 
         #[test]
         fn no_presents_while_waiting() {
-            let (mut wait, mut write) = pair();
+            let (mut wait, tx) = channel();
             let mut panel = Recorder::new(64, 32);
             let clock = SystemClock::new(TimeZone::UTC);
-            let writer = std::thread::spawn(move || {
+            let sender = std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(500));
-                write.write_all(&[1]).unwrap();
+                tx.send(Event::Shutdown).unwrap();
             });
             let start = Instant::now();
             run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
@@ -988,7 +982,7 @@ mod tests {
                 "run must wait"
             );
             assert_eq!(panel.presents.len(), 1);
-            writer.join().unwrap();
+            sender.join().unwrap();
         }
     }
 

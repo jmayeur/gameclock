@@ -8,13 +8,14 @@
 #[cfg(all(feature = "hzeller", feature = "simulator"))]
 compile_error!("the hzeller and simulator features cannot be used together");
 
-use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
+use std::sync::mpsc;
 
 use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::iterator::Signals;
 
-use gameclockd::{SignalWait, SystemClock, exit_status, local_zone, parse_args, run};
+use gameclockd::{ChannelWait, Event, SystemClock, exit_status, local_zone, parse_args, run};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -29,14 +30,13 @@ fn main() -> ExitCode {
     };
 
     // Register before the driver starts. Then a stop signal during
-    // initialization is not lost (docs/adr/0010).
-    let mut wait = match signal_pipe() {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("gameclockd: cannot register signal handlers: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
+    // initialization is not lost (docs/adr/0010, docs/adr/0016).
+    let (events, receiver) = mpsc::channel();
+    if let Err(e) = spawn_signal_thread(events) {
+        eprintln!("gameclockd: cannot register signal handlers: {e}");
+        return ExitCode::FAILURE;
+    }
+    let mut wait = ChannelWait::new(receiver);
     // Read the time zone once. A change needs a restart (docs/adr/0013).
     let (zone, message) = local_zone(TimeZone::try_system());
     eprintln!("{message}");
@@ -51,8 +51,8 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
-        // Each wait blocks in a read on the signal pipe, with a timeout until
-        // the next scene change. No extra thread (docs/adr/0013).
+        // Each wait blocks on the event channel, with a timeout until the
+        // next scene change (docs/adr/0016).
         run(
             &mut panel,
             args.mode.base_scene(),
@@ -70,13 +70,23 @@ fn main() -> ExitCode {
     ExitCode::from(exit_status(&result))
 }
 
-/// Register SIGTERM and SIGINT to write a byte to a socket pair. Give the
-/// wait on the read end.
-fn signal_pipe() -> std::io::Result<SignalWait> {
-    let (read, write) = UnixStream::pair()?;
-    signal_hook::low_level::pipe::register(SIGTERM, write.try_clone()?)?;
-    signal_hook::low_level::pipe::register(SIGINT, write)?;
-    Ok(SignalWait::new(read))
+/// The stack size of each helper thread. They only block and send events.
+const THREAD_STACK: usize = 64 * 1024;
+
+/// Register SIGTERM and SIGINT. Start a thread that sends one shutdown event
+/// when the first of them arrives.
+fn spawn_signal_thread(events: mpsc::Sender<Event>) -> std::io::Result<()> {
+    let mut signals = Signals::new([SIGTERM, SIGINT])?;
+    std::thread::Builder::new()
+        .name("signals".into())
+        .stack_size(THREAD_STACK)
+        .spawn(move || {
+            if signals.forever().next().is_some() {
+                // The loop can be gone already. Then there is nothing to stop.
+                let _ = events.send(Event::Shutdown);
+            }
+        })?;
+    Ok(())
 }
 
 /// The real LED matrix (docs/adr/0009).
