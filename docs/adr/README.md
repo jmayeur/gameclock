@@ -30,3 +30,5 @@ zero-padded) and add it to the index below.
 | [0009](0009-driver-crate-layout-and-flags.md) | Driver crate layout, feature-gated C++ build, pass-through driver flags | Accepted |
 | [0010](0010-systemd-service-and-signals.md) | Run as a root systemd service with signal-driven shutdown | Accepted |
 | [0011](0011-simplified-technical-english.md) | Write in Simplified Technical English | Accepted |
+| [0012](0012-scenes-and-compositor.md) | Scenes and the compositor | Accepted |
+| [0013](0013-time-and-deadline-wait.md) | Time with jiff, and the deadline wait | Accepted |

@@ -2,9 +2,9 @@
 
 ## 1. ADRs and dependencies
 
-- [ ] 1.1 Write ADR-0012 (scenes and the compositor, `allocation-counter`) and ADR-0013 (jiff, injected time, the deadline wait). Add both to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
-- [ ] 1.2 Add a status note to ADR-0010: "The signal wait is changed by ADR-0013." Verify that the rest of ADR-0010 does not change (`git diff`).
-- [ ] 1.3 Add `jiff` to the workspace. Give `gameclock-core` `default-features = false, features = ["std"]`. Give `gameclockd` `tz-system` and `tzdb-zoneinfo`. Add `allocation-counter` as a `gameclock-core` dev-dependency. Verify that `cargo deny check` passes and that `cargo tree -p gameclock-core -e normal` shows only `embedded-graphics` and `jiff`.
+- [x] 1.1 Write ADR-0012 (scenes and the compositor, `allocation-counter`) and ADR-0013 (jiff, injected time, the deadline wait). Add both to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 1.2 Add a status note to ADR-0010: "The signal wait is changed by ADR-0013." Verify that the rest of ADR-0010 does not change (`git diff`).
+- [x] 1.3 Add `jiff` to the workspace. Give `gameclock-core` `default-features = false, features = ["std"]`. Give `gameclockd` `tz-system` and `tzdb-zoneinfo`. Add `allocation-counter` as a `gameclock-core` dev-dependency. Verify that `cargo deny check` passes and that `cargo tree -p gameclock-core -e normal` shows only `embedded-graphics` and `jiff`.
 
 ## 2. Scene contract and compositor (`scene-model`)
 
