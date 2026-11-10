@@ -26,8 +26,8 @@
 
 ## 5. Daemon (`daemon-lifecycle`)
 
-- [ ] 5.1 Red: write `run` tests for "Brightness of the base scene" and "Brightness change presents the same image". Change "One present at startup" to the legacy clock at brightness 25. See them fail because `run` presents at full brightness.
-- [ ] 5.2 Green: make `run` present at the compositor's brightness. Verify that the 5.1 tests and all other `gameclockd` tests pass.
+- [x] 5.1 Red: write `run` tests for "Brightness of the base scene" and "Brightness change presents the same image". Change "One present at startup" to the legacy clock at brightness 25. See them fail because `run` presents at full brightness.
+- [x] 5.2 Green: make `run` present at the compositor's brightness. Verify that the 5.1 tests and all other `gameclockd` tests pass.
 - [ ] 5.3 Red: write `parse_args` tests for "Test-pattern mode is not a driver flag" and the existing usage errors with the new result type. Add `tests/cli.rs` tests for "Host build names the clock" and "Host build names the test pattern". See them fail.
 - [ ] 5.4 Green: change `parse_args` to give the mode and the driver flags (D4). Make `main.rs` build the clock or the heartbeat and write the base scene line. Verify that the 5.3 tests pass and that `cargo sim` shows the clock.
 

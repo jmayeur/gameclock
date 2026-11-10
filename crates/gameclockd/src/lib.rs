@@ -153,7 +153,8 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 /// Run the event loop until a stop signal (docs/adr/0006).
 ///
 /// The loop renders `base` for the current time and presents each changed
-/// frame on `panel` at full brightness. Then it waits until the next scene
+/// frame on `panel` at the brightness of the top scene. Then it waits until
+/// the next scene
 /// change. It does not wake at other times.
 ///
 /// # Errors
@@ -168,9 +169,9 @@ pub fn run<P: Panel>(
     let mut compositor = Compositor::new(base, width, height);
     loop {
         let now = clock.now();
-        if let Some((frame, _)) = compositor.update(&now) {
+        if let Some((frame, brightness)) = compositor.update(&now) {
             panel
-                .present(frame, Brightness::MAX)
+                .present(frame, brightness)
                 .map_err(RunError::Present)?;
         }
         match wait.wait(compositor.deadline(&now), now.timestamp()) {
@@ -266,9 +267,11 @@ mod tests {
     use std::collections::VecDeque;
     use std::rc::Rc;
 
+    use gameclock_core::clock::Clock as ClockScene;
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::embedded_graphics::prelude::*;
     use gameclock_core::heartbeat::Heartbeat;
+    use gameclock_core::schedule::Schedule;
     use gameclock_core::{Brightness, Frame, Scene};
     use jiff::tz::TimeZone;
     use jiff::{Timestamp, Zoned};
@@ -394,6 +397,42 @@ mod tests {
         (result, wait)
     }
 
+    fn legacy_clock() -> Box<dyn Scene> {
+        Box::new(ClockScene::new(Schedule::legacy()))
+    }
+
+    fn clock_frame(width: usize, height: usize, time: &str) -> Frame {
+        let mut f = Frame::new(width, height);
+        legacy_clock().render(&ts(time).to_zoned(TimeZone::UTC), &mut f);
+        f
+    }
+
+    /// A red image that does not change, at brightness 25 before
+    /// 1970-01-01T00:00:01Z and `after` from that time.
+    struct Dim {
+        after: u8,
+    }
+
+    impl Scene for Dim {
+        fn render(&mut self, _now: &Zoned, frame: &mut Frame) {
+            frame.clear(Rgb888::RED).unwrap();
+        }
+        fn next_change(&self, now: &Zoned) -> Option<Timestamp> {
+            let at = ts("1970-01-01T00:00:01Z");
+            (now.timestamp() < at).then_some(at)
+        }
+        fn is_finished(&self, _now: &Zoned) -> bool {
+            false
+        }
+        fn brightness(&self, now: &Zoned) -> Brightness {
+            if now.timestamp() < ts("1970-01-01T00:00:01Z") {
+                Brightness::new(25)
+            } else {
+                Brightness::new(self.after)
+            }
+        }
+    }
+
     fn heartbeat_frame(width: usize, height: usize, time: &str) -> Frame {
         let mut f = Frame::new(width, height);
         Heartbeat.render(&ts(time).to_zoned(TimeZone::UTC), &mut f);
@@ -449,12 +488,40 @@ mod tests {
     #[test]
     fn one_present_at_startup() {
         let mut panel = Recorder::new(64, 32);
-        let (result, _) = run_heartbeat(&mut panel, &[]);
-        result.unwrap();
+        let (clock, mut wait) = script(START, &[]);
+        run(&mut panel, legacy_clock(), &clock, &mut wait).unwrap();
         assert_eq!(panel.presents.len(), 1);
         let (frame, brightness) = &panel.presents[0];
-        assert_eq!(*frame, heartbeat_frame(64, 32, START));
-        assert_eq!(brightness.percent(), 100);
+        assert_eq!(*frame, clock_frame(64, 32, START));
+        assert_eq!(brightness.percent(), 25);
+    }
+
+    #[test]
+    fn heartbeat_presents_at_full_brightness() {
+        let mut panel = Recorder::new(64, 32);
+        run_heartbeat(&mut panel, &[]).0.unwrap();
+        assert_eq!(panel.presents[0].0, heartbeat_frame(64, 32, START));
+        assert_eq!(panel.presents[0].1, Brightness::MAX);
+    }
+
+    #[test]
+    fn brightness_of_the_base_scene() {
+        let mut panel = Recorder::new(64, 32);
+        let (clock, mut wait) = script(START, &[]);
+        run(&mut panel, Box::new(Dim { after: 25 }), &clock, &mut wait).unwrap();
+        assert_eq!(panel.presents.len(), 1);
+        assert_eq!(panel.presents[0].1, Brightness::new(25));
+    }
+
+    #[test]
+    fn brightness_change_presents_the_same_image() {
+        let mut panel = Recorder::new(64, 32);
+        let (clock, mut wait) = script(START, &[Step::Deadline]);
+        run(&mut panel, Box::new(Dim { after: 60 }), &clock, &mut wait).unwrap();
+        assert_eq!(panel.presents.len(), 2);
+        assert_eq!(panel.presents[0].0, panel.presents[1].0);
+        let levels: Vec<_> = panel.presents.iter().map(|(_, b)| b.percent()).collect();
+        assert_eq!(levels, vec![25, 60]);
     }
 
     #[test]
