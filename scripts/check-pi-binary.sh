@@ -1,6 +1,6 @@
 #!/bin/sh
-# Checks that a binary will run on the Pi Zero W as-is (specs/pi-deployment,
-# "Binary targets ARMv6 and glibc 2.28"; docs/adr/0007):
+# Checks that a binary runs on the Pi Zero W as-is (docs/adr/0007, scenario
+# "Binary targets ARMv6 and glibc 2.28" in openspec/specs/pi-deployment):
 #   - 32-bit ARM ELF, hard-float ABI
 #   - CPU architecture attribute ARMv6 (v6, v6K, or v6KZ), not v7+
 #   - no versioned glibc symbol newer than GLIBC_2.28

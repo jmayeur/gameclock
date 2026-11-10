@@ -11,7 +11,7 @@ Type=simple
 # Driver tuning without a rebuild, e.g.
 #   GAMECLOCKD_ARGS=--led-pwm-bits=7 --led-slowdown-gpio=1
 EnvironmentFile=-/etc/default/gameclockd
-# Starts as root to map GPIO; hzeller drops to the 'daemon' user after init.
+# Starts as root to map GPIO. hzeller drops to the 'daemon' user after init.
 ExecStart=/usr/local/bin/gameclockd $GAMECLOCKD_ARGS
 Restart=on-failure
 RestartSec=2

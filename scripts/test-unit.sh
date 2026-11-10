@@ -1,6 +1,6 @@
 #!/bin/sh
-# Tests deploy/gameclockd.service (specs/pi-deployment, "Runs as a supervised
-# service"; docs/adr/0010). Linux only: needs systemd-analyze.
+# Tests deploy/gameclockd.service (openspec/specs/pi-deployment, "Runs as a supervised
+# service", docs/adr/0010). Linux only: needs systemd-analyze.
 # Usage: scripts/test-unit.sh
 set -eu
 
@@ -22,15 +22,15 @@ has "ExecStart=/usr/local/bin/gameclockd \$GAMECLOCKD_ARGS"
 has "WantedBy=multi-user.target"
 grep -q "^User=" "$unit" && fail "$unit sets User=; the driver needs root to start (ADR-0010)"
 
-# systemd-analyze verify insists ExecStart exists, so verify a copy that
-# points at /bin/true; the real path is checked by the ExecStart line above.
+# systemd-analyze verify needs ExecStart to exist. So it reads a copy that
+# points at /bin/true. The ExecStart line test above checks the real path.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 sed 's|^ExecStart=/usr/local/bin/gameclockd|ExecStart=/bin/true|' "$unit" >"$work/gameclockd.service"
 if ! out=$(systemd-analyze verify "$work/gameclockd.service" 2>&1); then
     fail "systemd-analyze verify failed"
 fi
-# verify exits 0 on some warnings; treat any output about our unit as a failure.
+# verify exits 0 on some warnings. Any output about our unit is a failure.
 if echo "$out" | grep -q "gameclockd.service"; then
     fail "systemd-analyze reported problems:"
     echo "$out" | sed 's/^/    /'

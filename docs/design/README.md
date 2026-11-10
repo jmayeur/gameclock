@@ -1,7 +1,7 @@
 # Design docs
 
-The current map of the system. Kept accurate in the same change that alters
-behavior or structure (`CLAUDE.md`, rule 2). The reasons behind choices live in
+The current map of the system. A change to behavior or structure updates these
+docs in the same commit (`CLAUDE.md`, Rule 2). The reasons for decisions are in
 [`../adr/`](../adr/).
 
 - [`architecture.md`](architecture.md): crates, boundaries, data flow.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Deploys gameclockd to the Pi (docs/adr/0010, specs/pi-deployment).
+# Deploys gameclockd to the Pi (docs/adr/0010, openspec/specs/pi-deployment).
 #
 # Usage: GAMECLOCK_HOST=<ssh destination> scripts/deploy.sh [--enable | --rollback]
 #
@@ -8,11 +8,11 @@
 #               What starts at boot is unchanged.
 #   --enable    also make gameclockd the boot service instead of the legacy
 #               clock.
-#   --rollback  stop and disable gameclockd; start and enable the legacy
+#   --rollback  stop and disable gameclockd. Start and enable the legacy
 #               clock. Copies nothing.
 #
-# GAMECLOCK_HOST is any ssh destination (user@host or an ~/.ssh/config alias);
-# the repo never names a device. The remote user needs passwordless sudo.
+# GAMECLOCK_HOST is any ssh destination (user@host or an ~/.ssh/config alias).
+# The repo never names a device. The remote user needs passwordless sudo.
 # GAMECLOCKD_BIN overrides the binary to copy (default: a fresh
 # scripts/build-pi.sh build).
 set -eu

@@ -1,4 +1,4 @@
-# ADR-0005: Pure core renders frames; panels only blit
+# ADR-0005: Pure core renders frames and panels only blit
 
 - **Status:** Accepted
 - **Date:** 2026-11-09

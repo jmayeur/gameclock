@@ -1,13 +1,13 @@
 //! Built-in driver defaults for this hardware (docs/hardware/pi-zero-w.md).
 //!
-//! Command-line `--led-*` flags are parsed by hzeller over these values, so a
+//! hzeller parses the command-line `--led-*` flags over these values. So a
 //! flag always wins over a default (docs/adr/0009).
 
 use core::ffi::{CStr, c_int};
 
 /// The driver options gameclock sets before hzeller parses flags.
 ///
-/// Anything not listed keeps hzeller's own default.
+/// Each option that is not here keeps hzeller's own default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Defaults {
     /// Columns per panel (`--led-cols`).

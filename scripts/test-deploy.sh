@@ -1,6 +1,6 @@
 #!/bin/sh
-# Tests scripts/deploy.sh with stub ssh/scp on PATH (specs/pi-deployment,
-# "Deploy keeps device details out of the repo"; docs/adr/0010). No network.
+# Tests scripts/deploy.sh with stub ssh/scp on PATH (openspec/specs/pi-deployment,
+# "Deploy keeps device details out of the repo", docs/adr/0010). No network.
 # Usage: scripts/test-deploy.sh
 set -eu
 
@@ -26,7 +26,7 @@ done
 failures=0
 fail() { echo "FAIL: $*"; failures=$((failures + 1)); }
 
-# run <expected-exit> [args...]: run deploy.sh with stubs; output in $out.
+# run <expected-exit> [args...]: run deploy.sh with stubs. Output goes in $out.
 run() {
     want=$1; shift
     : >"$log"
@@ -51,7 +51,7 @@ echo "$out" | grep -q GAMECLOCK_HOST || fail "no-host message doesn't name GAMEC
 
 export GAMECLOCK_HOST=pi@example.invalid
 
-# Default: copy binary and unit, install, restart; boot settings untouched.
+# Default: copy binary and unit, install, restart. Boot settings stay the same.
 run 0
 called "scp"
 called "gameclockd.service"
@@ -66,7 +66,7 @@ called "systemctl restart gameclockd"
 called "systemctl disable clock.svc.service"
 called "systemctl enable gameclockd"
 
-# --rollback: no copy; legacy clock back as the running and boot service.
+# --rollback: no copy. The legacy clock runs again and is the boot service.
 run 0 --rollback
 not_called "scp"
 called "systemctl disable --now gameclockd"

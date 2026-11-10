@@ -1,4 +1,4 @@
-# ADR-0007: Target ARMv6 / glibc 2.28; cross-compile with cargo-zigbuild
+# ADR-0007: Target ARMv6 / glibc 2.28 and cross-compile with cargo-zigbuild
 
 - **Status:** Accepted
 - **Date:** 2026-11-09

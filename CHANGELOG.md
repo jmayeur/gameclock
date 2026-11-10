@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Simplified Technical English for all text (ADR-0011, CLAUDE.md Rule 5).
+  The `asd-ste100` skill is committed in `.claude/skills/`.
+  `scripts/lint-docs.sh` checks all tracked Markdown, and CI fails on a hard
+  finding.
 - Panel bring-up (OpenSpec `panel-bring-up`, ADR-0009, ADR-0010):
   - `gameclock-core`: the diagnostic `test_pattern`.
   - `rgbmatrix-sys`: hzeller's driver as a pinned submodule (`3da7a3b`),
@@ -20,6 +24,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
   - CI jobs for the Pi build and the scripts.
   - On-device baseline measurements of the legacy clock and `gameclockd`.
 - CLAUDE.md Rule 4: test-first, red → green → refactor.
+
+### Changed
+
+- Docs, specs, code comments, and messages rewritten in STE. Accepted ADRs got
+  mechanical fixes only. Error and notice text in `gameclockd` and
+  `rgbmatrix-sys` changed (for example, "unknown argument" replaces
+  "unrecognized argument").
+- OpenSpec changes are archived on their PR, before merge (CLAUDE.md Rule 3).
 
 - Cargo workspace (Rust 2024, toolchain pinned to 1.99.1, ARMv6 target).
 - `gameclock-core`: `Frame` (an `embedded-graphics` `DrawTarget`), the `Panel`

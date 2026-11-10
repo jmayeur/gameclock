@@ -12,8 +12,8 @@ mod driver {
     use std::fmt::Write as _;
     use std::path::{Path, PathBuf};
 
-    /// Sources from `OBJECTS` in the pinned `lib/Makefile`. Re-check this list
-    /// whenever the submodule is bumped (docs/adr/0009).
+    /// Sources from `OBJECTS` in the pinned `lib/Makefile`. Check this list
+    /// again at each submodule update (docs/adr/0009).
     const CXX_SOURCES: &[&str] = &[
         "gpio.cc",
         "led-matrix.cc",
@@ -34,10 +34,10 @@ mod driver {
     ];
     const C_SOURCES: &[&str] = &["hardware-mapping.c", "rp1/rp1_pio_support.c"];
 
-    /// Expected C layouts on 32-bit targets (the Pi), as `(name, bytes)`. One
-    /// table feeds both checks: `-DLAYOUT_*` for `src/layout_check.c` against
-    /// the real header, and `$OUT_DIR/layout.rs` for `src/ffi.rs` against our
-    /// mirrored Rust structs.
+    /// Expected C layouts on 32-bit targets (the Pi), as `(name, bytes)`. This
+    /// one table supplies two checks:
+    /// - `-DLAYOUT_*` for `src/layout_check.c`, against the real header.
+    /// - `$OUT_DIR/layout.rs` for `src/ffi.rs`, against our Rust structs.
     const LAYOUT_32: &[(&str, usize)] = &[
         ("COLOR_SIZE", 3),
         ("OPTIONS_SIZE", 72),
@@ -63,7 +63,7 @@ mod driver {
         ("OPTIONS_DISABLE_BUSY_WAITING", 68),
     ];
 
-    /// The Makefile's default; we set the mapping at runtime anyway.
+    /// The Makefile's default. We set the mapping at runtime.
     const DEFAULT_HARDWARE: &str = "\"regular\"";
 
     pub fn build() {
@@ -84,8 +84,8 @@ mod driver {
             lib.join("rp1/rp1_pio_vendor/include"),
         ];
 
-        // C++ first: its static library refers to symbols in the C one, and
-        // cargo passes static libraries to the linker in this order.
+        // Build C++ first. Its static library uses symbols from the C library.
+        // Cargo gives static libraries to the linker in this order.
         let mut cxx = base(&include, &rp1_includes);
         cxx.cpp(true).flag("-fno-exceptions").flag("-std=c++11");
         cxx.files(CXX_SOURCES.iter().map(|s| lib.join(s)));
@@ -133,10 +133,10 @@ mod driver {
             .includes(extra_includes)
             .define("DEFAULT_HARDWARE", DEFAULT_HARDWARE)
             .opt_level(3)
-            // Vendored code: its warnings are upstream's to fix, not ours.
+            // Vendored code. Upstream owns its warnings.
             .warnings(false);
         if env::var("TARGET").is_ok_and(|t| t.starts_with("arm-unknown-linux-gnueabihf")) {
-            // ARM1176JZF-S (Pi Zero W). zig would otherwise pick a generic CPU.
+            // ARM1176JZF-S (Pi Zero W). Without this, zig selects a generic CPU.
             b.flag("-mcpu=arm1176jzf_s");
         }
         b

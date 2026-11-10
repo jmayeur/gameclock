@@ -7,7 +7,7 @@
 
 Performance is the primary goal. On the single-core Pi Zero W, hzeller's refresh
 thread needs as much of the CPU as it can get. The legacy loop woke every
-30–150 ms whether or not anything had changed, even though the clock face only
+30–150 ms whether or not anything changed, even though the clock face only
 changes once a minute.
 
 ## Decision
@@ -22,9 +22,9 @@ changes once a minute.
 - **No per-frame heap allocation** on the hot path. Fonts and resources load
   once at startup.
 - **Measure, don't assume.** We track these numbers on the device:
-  - daemon CPU % while idle and while animating;
-  - panel refresh rate (hzeller reports it);
-  - resident memory.
+  - daemon CPU % while idle and while animating
+  - panel refresh rate (hzeller reports it)
+  - resident memory
 
   The first baseline is the legacy Python clock on the same Pi, taken during
   panel bring-up (`openspec/changes/archive/2026-11-09-panel-bring-up/measurements.md`). Benchmarks for the core's render functions run on the dev
@@ -34,7 +34,7 @@ changes once a minute.
 
 - An idle clock costs about one wakeup a minute instead of 7–30 a second.
 - Input latency depends on how commands arrive. Blocking reads (socket or HTTP)
-  give immediate wakeups; polling a file would need a timer. That is one reason
+  give immediate wakeups. Polling a file would need a timer. That is one reason
   the command transport gets its own OpenSpec change.
 - Scenes have to say when they next change. That's a small addition to the
   scene contract.

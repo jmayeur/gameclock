@@ -16,9 +16,9 @@ crate plus "a safe wrapper that implements `Panel`". It left three things open:
    both need `unsafe`, but `CLAUDE.md` confines it to one FFI crate.
 2. **When the C++ gets built.** Every workspace command (`cargo clippy`,
    `cargo test`, and CI's `cargo check --target arm-unknown-linux-gnueabihf`)
-   runs every member's build script. If the driver's `build.rs` compiled C++
-   whenever it saw the ARM target, the plain ARMv6 type-check would need a C++
-   cross-compiler, and a Mac checkout would need the submodule.
+   runs every member's build script. Suppose the driver's `build.rs` compiled
+   C++ whenever it saw the ARM target. Then the plain ARMv6 type-check would
+   need a C++ cross-compiler, and a Mac checkout would need the submodule.
 3. **How driver options are configured.** ADR-0004 says "through `gameclockd`
    configuration", but there is no config format yet, and bring-up needs to try
    many driver settings quickly to measure them.
@@ -53,11 +53,11 @@ Facts about the pinned upstream (`hzeller/rpi-rgb-led-matrix`
   the RP1 sources), `-O3 -fno-exceptions -std=c++11`, and `DEFAULT_HARDWARE`,
   plus `-mcpu=arm1176jzf_s` for the Pi target. `-march=native` and LTO are left
   out because we cross-compile. A `layout_check.c` compiled alongside it
-  statically asserts the sizes and offsets of the C structs we mirror by hand, so
-  a header change that breaks our bindings fails the build.
+  statically asserts the sizes and offsets of the C structs we mirror by hand.
+  So a header change that breaks our bindings fails the build.
 - **Driver flags pass through.** `gameclockd` hands its `--led-*` arguments to
   `led_matrix_create_from_options`, over our defaults for this Pi (64×32,
-  chain 1, parallel 1, `adafruit-hat`). hzeller's parser validates them. There
+  chain 1, parallel 1, `adafruit-hat`). hzeller's parser checks them. There
   is no driver section in a config file until a later change shows which knobs
   matter.
 - **Licensing of the linked C/C++ runtime.** `zig c++` links LLVM's libc++,
@@ -84,9 +84,9 @@ Facts about the pinned upstream (`hzeller/rpi-rgb-led-matrix`
   defaults plus any `--led-*` runtime flags.
 - Bumping the submodule means re-reading `led-matrix-c.h` and
   `lib/Makefile`. The layout check catches struct drift, not new or renamed
-  functions; those fail at link time.
+  functions. Those fail at link time.
 - Driver tuning needs no rebuild (flags live in the service's environment
-  file, ADR-0010), but flag names are hzeller's, so a future config file will
+  file, ADR-0010). But flag names are hzeller's, so a future config file will
   have to map onto them or replace them.
 - The RP1 backend's `piolib` finds its chips through a custom `piochips` ELF
   section and the `__start_`/`__stop_` symbols. LLD's `--gc-sections` drops

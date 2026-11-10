@@ -6,7 +6,7 @@ each behavior is re-decided when its change is proposed. Where `main/` and `v2/`
 differ, both are noted. The Pi runs `.../bindings/python/samples/clock.py`, and
 which variant that file is hasn't been confirmed.
 
-## Display
+## Rendering
 
 - 64×32 panel. Text is drawn with BDF fonts: `7x13B` for the clock and
   messages, `texgyre-27` for the bedtime alert.
@@ -48,7 +48,7 @@ truncates it.
 
 | Value | Behavior |
 |---|---|
-| `panic88` | Full-screen color-wheel fill, cycling red→green→blue, with `PANIC!!` in black or white for contrast. About 20 s (`v2`; `main` uses 4000 × 5 ms iterations). |
+| `panic88` | Full-screen color-wheel fill, cycling red→green→blue, with `PANIC!!` in black or white for contrast. About 20 s in `v2`. `main` uses 4000 × 5 ms iterations. |
 | `bedtime` | `GAME OVER - TURN IT OFF!` scrolls in lime `(50,205,50)` using `texgyre-27` at y=25. 2 passes (`v2`) or 1 (`main`). |
 | `brightness` | Scrolls the current brightness number. |
 | any other text | Scrolls in green `(0,150,0)` at y=20, with `+` turned into a space. 4 passes (`v2`) or 5 (`main`). The `v2` server trims whitespace and caps messages at 64 chars. |

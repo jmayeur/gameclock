@@ -1,41 +1,43 @@
 # Contributing
 
-The short version of [`CLAUDE.md`](CLAUDE.md), which is the full working
-agreement.
+The short form of [`CLAUDE.md`](CLAUDE.md), which has all the rules.
 
-1. **Features start as an OpenSpec change** in `openspec/changes/<name>/`. Agree
-   on the behavior and scenarios before writing code. Install the CLI once with
-   `npm i -g @fission-ai/openspec@1.17.0` (not the unscoped `openspec`
-   package). In Claude Code, run `/opsx:propose`, then `/opsx:apply`, then
+1. **Features start as an OpenSpec change** in `openspec/changes/<name>/`.
+   Agree on the behavior and scenarios before you write code. Install the CLI
+   with `npm i -g @fission-ai/openspec@1.17.0` (not the unscoped `openspec`
+   package). In Claude Code, run `/opsx:propose`, then `/opsx:apply`. Run
    `/opsx:archive` as the last commit on the PR, after review and before
    merge.
-2. **Decisions get an ADR.** That covers dependencies, boundaries, hardware or
-   deployment assumptions, licensing, and reversals. See
-   [`docs/adr/`](docs/adr/).
+2. **Decisions get an ADR:** dependencies, boundaries, hardware or deployment
+   assumptions, licensing, and reversals. See [`docs/adr/`](docs/adr/).
 3. **Design docs stay true.** If you change how something works, update
    [`docs/design/`](docs/design/) in the same commit.
-4. **Build test-first (red → green → refactor).** Write a failing test, see it
-   fail for the right reason, make it pass, then clean up. Bug fixes start with
-   a test that reproduces the bug. Commit tests together with the code that
-   makes them pass.
-5. **Tests and checks pass:**
+4. **Build test-first (red → green → refactor).** Write a test and see it fail
+   for the right reason. Make it pass. Then improve the code. A bug fix starts
+   with a test that shows the bug. Commit each test with the code that makes
+   it pass.
+5. **Write in Simplified Technical English** (ADR-0011): short sentences,
+   active voice, no semicolons, one name for one thing. The `asd-ste100` skill
+   in `.claude/skills/` has the rules.
+6. **All checks pass:**
    ```bash
    cargo fmt --all -- --check
    cargo clippy --all-targets -- -D warnings
    cargo test
    cargo deny check
    openspec validate --all --strict
+   scripts/lint-docs.sh
    ```
-6. **Performance claims come with numbers**, measured on the Pi Zero W for
-   anything runtime-related.
-7. **New dependencies must be GPL-2.0-compatible.** Apache-2.0-only and
-   GPL-3.0/AGPL crates are rejected by `deny.toml`.
+7. **Performance claims come with numbers** from the Pi Zero W for all
+   runtime behavior.
+8. **New dependencies must be compatible with GPL-2.0.** `deny.toml` rejects
+   Apache-2.0-only, GPL-3.0, and AGPL crates.
 
 ## Building for the Pi
 
-The Pi build (`--features hzeller`) compiles hzeller's C++ driver, vendored as
-a git submodule, with zig (ADR-0007, ADR-0009). Other `cargo` commands don't
-need any of this.
+The Pi build (`--features hzeller`) compiles hzeller's C++ driver from a git
+submodule with zig (ADR-0007, ADR-0009). Other `cargo` commands do not need
+these tools.
 
 ```bash
 git submodule update --init          # vendor/rpi-rgb-led-matrix, pinned
@@ -52,9 +54,9 @@ scripts/clippy-pi.sh                 # lints the driver code host clippy can't s
 
 ## Deploying to the Pi
 
-`GAMECLOCK_HOST` is the Pi's ssh destination (`user@host` or an `~/.ssh/config`
-alias). It stays in your environment, never in the repo. The Pi user needs
-passwordless `sudo`.
+`GAMECLOCK_HOST` is the Pi's ssh destination (`user@host` or an
+`~/.ssh/config` alias). Keep it in your environment, not in the repo. The Pi
+user needs passwordless `sudo`.
 
 ```bash
 GAMECLOCK_HOST=pi@<host> scripts/deploy.sh             # build, install, restart (stops the legacy clock)
@@ -62,21 +64,22 @@ GAMECLOCK_HOST=pi@<host> scripts/deploy.sh --enable    # ...and make gameclockd 
 GAMECLOCK_HOST=pi@<host> scripts/deploy.sh --rollback  # back to the legacy clock, now and at boot
 ```
 
-Driver flags go in `/etc/default/gameclockd` on the Pi, for example
-`GAMECLOCKD_ARGS=--led-pwm-bits=7 --led-show-refresh`, then
+Put driver flags in `/etc/default/gameclockd` on the Pi, for example
+`GAMECLOCKD_ARGS=--led-pwm-bits=8`. Then run
 `sudo systemctl restart gameclockd`.
 
 ## Measuring on the Pi
 
-Copy `scripts/measure.sh` to the Pi and run it against a process:
+Copy `scripts/measure.sh` to the Pi and run it on a process:
 
 ```bash
 sh measure.sh "$(pidof gameclockd)" 60
 ```
 
-It prints CPU % of one core (total and per thread), RSS, and voluntary context
-switches per thread. For refresh rate, add `--led-show-refresh` to the driver
-flags and read the driver's output with `journalctl -u gameclockd -f`.
+It prints CPU as a percentage of one core (total and for each thread), RSS,
+and voluntary context switches for each thread. For the refresh rate, add
+`--led-show-refresh` to the driver flags. Read the output with
+`journalctl -u gameclockd -f`.
 
 ## Script tests
 
@@ -85,12 +88,12 @@ scripts/test-check-pi-binary.sh      # needs zig and readelf
 scripts/test-deploy.sh               # stub ssh/scp, runs anywhere
 scripts/test-unit.sh                 # Linux: needs systemd-analyze
 scripts/test-measure.sh              # Linux: needs /proc and a C compiler
+scripts/test-lint-docs.sh            # needs python3
 ```
 
-On macOS, run the Linux ones in a container, for example a Debian image with
-`systemd gcc libc6-dev procps` installed:
+On macOS, run the Linux tests in a container. For example, use a Debian image
+with `systemd gcc libc6-dev procps`:
 `docker run --rm -v "$PWD":/w -w /w <image> scripts/test-measure.sh`.
 
-Keep commits small, with an imperative subject line. Reference the ADR or
-OpenSpec change where relevant. By contributing, you agree your contribution is
-licensed GPL-2.0-or-later.
+Make small commits with an imperative subject line. Name the ADR or the
+OpenSpec change. Your contribution is licensed GPL-2.0-or-later.

@@ -1,10 +1,10 @@
 //! Drive hzeller's `rpi-rgb-led-matrix` from gameclock.
 //!
-//! This is the only crate in the workspace that allows `unsafe`
-//! (docs/adr/0009). Every `unsafe` block carries a `// SAFETY:` comment.
+//! This is the only crate in the workspace that permits `unsafe`
+//! (docs/adr/0009). Each `unsafe` block has a `// SAFETY:` comment.
 //!
-//! The pure parts (driver defaults and frame conversion) always compile and
-//! are tested on any host. The FFI and the hardware panel exist only with the
+//! The pure parts (driver defaults and frame conversion) always compile. Their
+//! tests run on any host. The FFI and the hardware panel exist only with the
 //! `link` feature, which builds and links the vendored C++ library.
 
 #![allow(unsafe_code)] // docs/adr/0009: the single crate permitted unsafe.

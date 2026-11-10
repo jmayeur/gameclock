@@ -4,8 +4,8 @@ description = "FFI to hzeller's rpi-rgb-led-matrix C API and a safe gameclock Pa
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-# The crate links hzeller's GPL-2.0-only library when `link` is enabled; our
-# own code stays GPL-2.0-or-later (docs/adr/0003).
+# With `link`, the crate links hzeller's GPL-2.0-only library. Our own code
+# stays GPL-2.0-or-later (docs/adr/0003).
 license.workspace = true
 repository.workspace = true
 publish.workspace = true

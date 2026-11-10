@@ -6,8 +6,8 @@
 ## Context
 
 This isn't a port. Features from the legacy clock (and new ones) should be
-agreed on, built, and verified one at a time, with AI assistance, without the
-spec and the code drifting apart.
+agreed on, built, and verified one at a time, with AI assistance. The spec and
+the code must not drift apart.
 
 ## Decision
 
@@ -26,7 +26,7 @@ has no effect on the license policy.
 ### Tooling details (clarified 2026-11-09)
 
 - The package is **`@fission-ai/openspec`**, pinned to **1.17.0**. The unscoped
-  `openspec` npm package is an unrelated placeholder; don't use it.
+  `openspec` npm package is an unrelated placeholder. Don't use it.
 - Install the CLI globally (`npm i -g @fission-ai/openspec@1.17.0`). The Claude
   Code skills call a bare `openspec` command. CI runs the same pinned version
   with `npx` to execute `openspec validate --all --strict`.

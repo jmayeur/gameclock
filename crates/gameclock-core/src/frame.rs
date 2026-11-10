@@ -1,4 +1,4 @@
-//! The in-memory frame buffer that everything renders into.
+//! The in-memory frame buffer that all rendering goes into.
 
 use core::convert::Infallible;
 
@@ -8,7 +8,7 @@ use embedded_graphics::prelude::*;
 /// A row-major RGB frame buffer.
 ///
 /// Implements [`DrawTarget`], so any `embedded-graphics` primitive, font, or
-/// image can be drawn onto it. Drawing outside the bounds is silently clipped.
+/// image can draw on it. Drawing outside the bounds is clipped with no error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
     width: usize,
@@ -45,7 +45,7 @@ impl Frame {
         self.index(point).map(|i| self.pixels[i])
     }
 
-    /// All pixels in row-major order; this is what a panel blits.
+    /// All pixels in row-major order. A panel blits this buffer.
     #[must_use]
     pub fn pixels(&self) -> &[Rgb888] {
         &self.pixels
@@ -60,7 +60,7 @@ impl Frame {
 
 impl OriginDimensions for Frame {
     fn size(&self) -> Size {
-        // Frames are panel-sized (tens of pixels); saturate rather than wrap.
+        // Frames are panel-sized (tens of pixels). Saturate, do not wrap.
         let w = u32::try_from(self.width).unwrap_or(u32::MAX);
         let h = u32::try_from(self.height).unwrap_or(u32::MAX);
         Size::new(w, h)

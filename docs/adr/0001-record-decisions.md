@@ -1,4 +1,4 @@
-# ADR-0001: Record decisions as ADRs; keep design docs current
+# ADR-0001: Record decisions as ADRs and keep design docs current
 
 - **Status:** Accepted
 - **Date:** 2026-11-09
@@ -6,16 +6,16 @@
 ## Context
 
 The legacy clock grew as one loop in which Clock, Message Board, and Panic were
-intertwined, and nothing recorded why things were the way they were. This
-project is meant to be run formally and to evolve feature by feature, so the
-reasoning behind choices has to survive past the commit that made them.
+intertwined. Nothing recorded why things were the way they were. This project
+is meant to be run formally and to evolve feature by feature. So the reasoning
+behind choices has to survive past the commit that made them.
 
 ## Decision
 
 - Significant decisions are recorded as numbered, append-only ADRs in
   `docs/adr/`, using `template.md`.
 - `docs/design/` describes the current system and is updated in the same change
-  that alters it.
+  that changes it.
 - `CLAUDE.md` makes both rules part of the working agreement, so they apply to
   AI-assisted changes too.
 

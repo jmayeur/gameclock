@@ -2,19 +2,19 @@
 
 use core::fmt;
 
-/// Why a panel could not be created or a frame could not be shown.
+/// The reason that a panel cannot start or cannot show a frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    /// The frame's `(width, height)` differs from the panel's.
+    /// The frame's `(width, height)` is different from the panel's.
     DimensionMismatch {
         /// The frame's size.
         frame: (usize, usize),
         /// The panel's size.
         panel: (usize, usize),
     },
-    /// hzeller could not create the matrix (bad flags, or no GPIO access).
+    /// hzeller cannot create the matrix (bad flags, or no GPIO access).
     Init,
-    /// Arguments hzeller did not recognize as `--led-*` flags.
+    /// Arguments that hzeller does not know as `--led-*` flags.
     UnknownArgs(Vec<String>),
 }
 
@@ -23,15 +23,14 @@ impl fmt::Display for Error {
         match self {
             Self::DimensionMismatch { frame, panel } => write!(
                 f,
-                "frame is {}×{} but the panel is {}×{}",
+                "the frame is {}×{}, but the panel is {}×{}",
                 frame.0, frame.1, panel.0, panel.1
             ),
-            Self::Init => f.write_str(
-                "LED panel initialization failed (see the driver's messages above; \
-                 GPIO access needs root)",
-            ),
+            Self::Init => {
+                f.write_str("LED panel initialization failed. See the driver messages above.")
+            }
             Self::UnknownArgs(args) => {
-                write!(f, "unrecognized driver arguments: {}", args.join(" "))
+                write!(f, "unknown driver arguments: {}", args.join(" "))
             }
         }
     }
@@ -42,6 +41,26 @@ impl std::error::Error for Error {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn messages_are_exact() {
+        let mismatch = Error::DimensionMismatch {
+            frame: (32, 16),
+            panel: (64, 32),
+        };
+        assert_eq!(
+            mismatch.to_string(),
+            "the frame is 32×16, but the panel is 64×32"
+        );
+        assert_eq!(
+            Error::Init.to_string(),
+            "LED panel initialization failed. See the driver messages above."
+        );
+        assert_eq!(
+            Error::UnknownArgs(vec!["--led-a".into(), "--led-b".into()]).to_string(),
+            "unknown driver arguments: --led-a --led-b"
+        );
+    }
 
     #[test]
     fn dimension_mismatch_names_both_sizes() {

@@ -1,8 +1,7 @@
 # Hardware: Raspberry Pi Zero W + Adafruit RGB Matrix HAT
 
-Facts collected from the running device on 2026-11-09, plus what the legacy
-code implies. They drive the driver defaults (ADR-0004) and the build target
-(ADR-0007).
+Facts from the running device on 2026-11-09, and from the legacy code. They
+set the driver defaults (ADR-0004) and the build target (ADR-0007).
 
 ## Board and OS
 
@@ -10,11 +9,11 @@ code implies. They drive the driver defaults (ADR-0004) and the build target
 |---|---|
 | Model | Raspberry Pi Zero W Rev 1.1 (BCM2835) |
 | CPU | ARM1176JZF-S, **ARMv6**, single core, `armv6l` |
-| RAM | 512 MB (430 MiB visible; about 285 MiB available with the legacy stack running) |
+| RAM | 512 MB. 430 MiB visible. About 285 MiB available while the legacy stack runs. |
 | OS | Raspbian 10 **Buster** (end-of-life), glibc 2.28 |
 | RTC | None. `fake-hwclock` restores time at boot, so the clock depends on NTP. |
 | Audio | `dtparam=audio=off`, which frees the PWM peripheral for hardware pulse |
-| Display overlay | `dtoverlay=vc4-fkms-v3d` (not needed headless; a candidate to drop) |
+| Video overlay | `dtoverlay=vc4-fkms-v3d`. Not necessary without a monitor. A candidate to remove. |
 
 ## Panel and HAT
 
