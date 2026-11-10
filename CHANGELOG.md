@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Terminal simulator (OpenSpec `dev-simulator`): `TerminalPanel` draws
+  frames in a 24-bit color terminal. Run it with `cargo sim`. The `simulator`
+  feature selects it. It cannot be used with `hzeller`.
 - Simplified Technical English for all text (ADR-0011, CLAUDE.md Rule 5).
   The `asd-ste100` skill is committed in `.claude/skills/`.
   `scripts/lint-docs.sh` checks all tracked Markdown, and CI fails on a hard

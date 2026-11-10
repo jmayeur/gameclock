@@ -7,8 +7,10 @@
 - **Test pattern**: the diagnostic image from `gameclock_core::test_pattern`:
   colored corner markers (orientation), a white border (missing edges), color
   bars (channel order), and a gray ramp (color depth). Not a scene.
-- **LogPanel**: the `Panel` used by builds without the LED driver. It only
-  logs what it would show, so the daemon runs on any machine.
+- **LogPanel**: the `Panel` of the default host build. It only logs each
+  present, so the daemon runs on any machine.
+- **TerminalPanel** (simulator): the `Panel` of the `simulator` build. It draws
+  frames in a terminal with 24-bit color. Run it with `cargo sim`.
 - **Driver flags**: hzeller's `--led-*` command-line options (for example
   `--led-pwm-bits`, `--led-slowdown-gpio`, `--led-show-refresh`). `gameclockd`
   passes them to the driver over its Pi defaults (ADR-0009). On the Pi they

@@ -33,8 +33,8 @@
     `vendor/rpi-rgb-led-matrix` submodule with zig. The crate adds the
     hand-written FFI (`ffi`), a build-time struct layout check, and
     `HzellerPanel`.
-- **Simulator `Panel`** (planned): shows frames on a dev machine, in a
-  truecolor terminal or a window.
+- **`TerminalPanel`** (exists, `gameclockd::sim`, `simulator` feature): shows
+  frames in a 24-bit color terminal on a dev machine. A window is not planned.
 
 ## Key types
 
@@ -54,6 +54,11 @@
 
   When `HzellerPanel` drops, hzeller stops its refresh thread and blanks the
   panel.
+- **`TerminalPanel`** (`gameclockd`, `simulator` only): writes each frame to
+  a terminal. Each cell is `▀`, with the upper pixel as the foreground color
+  and the lower pixel as the background color. A 64×32 frame uses 64 columns
+  and 16 lines. It scales colors by the brightness. When it drops, it resets
+  the colors and shows the cursor again.
 - **`test_pattern::render`**: draws the diagnostic test pattern into any
   `Rgb888` `DrawTarget`, usually a `Frame`. The result depends only on the
   target's size.
@@ -66,10 +71,14 @@
    argument exits 2 before the daemon touches the panel.
 2. **Signals.** The daemon registers SIGTERM and SIGINT with `signal-hook`
    before the driver starts.
-3. **Panel, selected at build time.** With the `hzeller` feature (the Pi
-   build, `scripts/build-pi.sh`), `HzellerPanel::new` receives the flags.
-   Without it, `LogPanel` writes each present to stderr and ignores `--led-*`
-   flags with a notice.
+3. **Panel, selected at build time.** There are three builds:
+   - `hzeller` (the Pi build, `scripts/build-pi.sh`): `HzellerPanel::new`
+     receives the flags.
+   - `simulator` (`cargo sim`): `TerminalPanel` draws on stdout.
+   - Neither: `LogPanel` writes each present to stderr.
+
+   Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
+   build with `hzeller` and `simulator` together stops with a compile error.
 4. **Run.** `run` renders `test_pattern` into a panel-sized `Frame` and
    presents it once at full brightness. Then it blocks on the signal iterator.
    Idle is a blocked read with no timer and no extra thread.

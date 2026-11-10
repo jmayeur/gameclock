@@ -12,6 +12,8 @@ publish.workspace = true
 # panel. Only the Pi release build (scripts/build-pi.sh) enables it.
 [features]
 hzeller = ["dep:rgbmatrix-sys", "rgbmatrix-sys/link"]
+# Draws frames in the terminal on a dev machine. Not with `hzeller`.
+simulator = []
 
 [dependencies]
 gameclock-core.workspace = true

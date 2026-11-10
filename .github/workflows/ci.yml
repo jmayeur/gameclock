@@ -22,6 +22,10 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      - name: Simulator build (openspec/specs/terminal-simulator)
+        run: |
+          cargo clippy --all-targets --locked --features simulator -- -D warnings
+          cargo test --locked --features simulator
       - name: Type-check for Pi Zero W (ARMv6)
         run: cargo check --locked --target arm-unknown-linux-gnueabihf
 
@@ -48,6 +52,8 @@ jobs:
         run: scripts/check-pi-binary.sh target/arm-unknown-linux-gnueabihf/release/gameclockd
       - name: Clippy on the driver code (Pi target)
         run: scripts/clippy-pi.sh
+      - name: The hzeller and simulator features do not build together
+        run: scripts/test-feature-exclusive.sh
 
   scripts:
     name: scripts · systemd unit · STE

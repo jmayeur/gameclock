@@ -54,6 +54,7 @@ cargo clippy --all-targets -- -D warnings
 cargo deny check                                    # license and advisory policy
 cargo check --target arm-unknown-linux-gnueabihf    # Pi Zero W (ARMv6)
 scripts/lint-docs.sh                                # Simplified Technical English
+cargo sim                                           # see the frames in the terminal
 ```
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) tells how to build for the Pi, deploy, and

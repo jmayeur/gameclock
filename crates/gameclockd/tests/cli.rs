@@ -3,34 +3,40 @@
 //! test argument handling, signal registration, and exit codes, which unit
 //! tests cannot reach.
 //!
-//! Host build only. With the `hzeller` feature, the binary needs the real
-//! panel.
+//! Host builds only. With the `hzeller` feature, the binary needs the real
+//! panel. The `log_panel` tests run without features. The `simulator` tests
+//! run with `--features simulator`.
 #![cfg(not(feature = "hzeller"))]
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-/// The logging panel prints this after the daemon presents. At that time, the
-/// signal handlers are registered.
-const READY: &str = "presented a 64×32 frame";
-
-/// A running daemon with its stderr collected line by line.
+/// A running daemon with its stderr collected line by line, and its stdout
+/// collected at exit.
 struct Daemon {
     child: Child,
     lines: Receiver<String>,
     seen: Vec<String>,
+    stdout: Receiver<String>,
 }
 
 impl Daemon {
     fn spawn(args: &[&str]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_gameclockd"))
             .args(args)
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .expect("spawn gameclockd");
+        let mut out = child.stdout.take().expect("piped stdout");
+        let (out_tx, stdout) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = out.read_to_string(&mut text);
+            let _ = out_tx.send(text);
+        });
         let stderr = child.stderr.take().expect("piped stderr");
         let (tx, lines) = mpsc::channel();
         std::thread::spawn(move || {
@@ -44,6 +50,7 @@ impl Daemon {
             child,
             lines,
             seen: Vec::new(),
+            stdout,
         }
     }
 
@@ -61,6 +68,7 @@ impl Daemon {
         }
     }
 
+    #[cfg_attr(feature = "simulator", allow(dead_code))]
     fn stderr_contains(&self, needle: &str) -> bool {
         self.seen.iter().any(|l| l.contains(needle))
     }
@@ -89,7 +97,16 @@ impl Daemon {
         }
     }
 
+    /// All of stdout. Call it after the daemon exits.
+    #[cfg_attr(not(feature = "simulator"), allow(dead_code))]
+    fn stdout(&self) -> String {
+        self.stdout
+            .recv_timeout(Duration::from_secs(5))
+            .expect("stdout after exit")
+    }
+
     /// Collect whatever stderr is left after exit.
+    #[cfg_attr(feature = "simulator", allow(dead_code))]
     fn drain(&mut self) {
         while let Ok(line) = self.lines.recv_timeout(Duration::from_millis(200)) {
             self.seen.push(line);
@@ -104,48 +121,78 @@ impl Drop for Daemon {
     }
 }
 
-fn stops_cleanly_on(signal: &str) {
-    let mut d = Daemon::spawn(&[]);
-    d.wait_for(READY);
-    d.signal(signal);
-    let status = d.exit_within(Duration::from_secs(1));
-    assert_eq!(status.code(), Some(0), "exit status after SIG{signal}");
+/// Tests of the default host build, which uses the logging panel.
+#[cfg(not(feature = "simulator"))]
+mod log_panel {
+    use super::*;
+
+    /// The logging panel prints this after the daemon presents. At that time,
+    /// the signal handlers are registered.
+    const READY: &str = "presented a 64×32 frame";
+
+    fn stops_cleanly_on(signal: &str) {
+        let mut d = Daemon::spawn(&[]);
+        d.wait_for(READY);
+        d.signal(signal);
+        let status = d.exit_within(Duration::from_secs(1));
+        assert_eq!(status.code(), Some(0), "exit status after SIG{signal}");
+    }
+
+    #[test]
+    fn sigterm_exits_with_success() {
+        stops_cleanly_on("TERM");
+    }
+
+    #[test]
+    fn sigint_exits_with_success() {
+        stops_cleanly_on("INT");
+    }
+
+    #[test]
+    fn unknown_argument_is_a_usage_error() {
+        let mut d = Daemon::spawn(&["--frobnicate"]);
+        let status = d.exit_within(Duration::from_secs(5));
+        d.drain();
+        assert_eq!(status.code(), Some(2));
+        assert!(d.stderr_contains("--frobnicate"), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
+    fn host_build_announces_the_logging_panel() {
+        let mut d = Daemon::spawn(&[]);
+        d.wait_for(READY);
+        let notice = "gameclockd: no LED driver is built in. Frames are only logged.";
+        assert!(d.seen.iter().any(|l| l == notice), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
+    fn driver_flags_are_ignored_without_the_driver() {
+        let mut d = Daemon::spawn(&["--led-pwm-bits=7"]);
+        d.wait_for(READY);
+        assert!(
+            d.stderr_contains("--led-* flags are ignored"),
+            "stderr: {:?}",
+            d.seen
+        );
+    }
 }
 
-#[test]
-fn sigterm_exits_with_success() {
-    stops_cleanly_on("TERM");
-}
+/// Tests of the simulator build (`openspec/specs/terminal-simulator`).
+#[cfg(feature = "simulator")]
+mod simulator {
+    use super::*;
 
-#[test]
-fn sigint_exits_with_success() {
-    stops_cleanly_on("INT");
-}
-
-#[test]
-fn unknown_argument_is_a_usage_error() {
-    let mut d = Daemon::spawn(&["--frobnicate"]);
-    let status = d.exit_within(Duration::from_secs(5));
-    d.drain();
-    assert_eq!(status.code(), Some(2));
-    assert!(d.stderr_contains("--frobnicate"), "stderr: {:?}", d.seen);
-}
-
-#[test]
-fn host_build_announces_the_logging_panel() {
-    let mut d = Daemon::spawn(&[]);
-    d.wait_for(READY);
-    let notice = "gameclockd: no LED driver is built in. Frames are only logged.";
-    assert!(d.seen.iter().any(|l| l == notice), "stderr: {:?}", d.seen);
-}
-
-#[test]
-fn driver_flags_are_ignored_without_the_driver() {
-    let mut d = Daemon::spawn(&["--led-pwm-bits=7"]);
-    d.wait_for(READY);
-    assert!(
-        d.stderr_contains("--led-* flags are ignored"),
-        "stderr: {:?}",
-        d.seen
-    );
+    #[test]
+    fn simulator_build_draws_in_the_terminal() {
+        let mut d = Daemon::spawn(&[]);
+        // Signal handlers are registered before this notice.
+        d.wait_for("Frames are drawn in the terminal.");
+        d.signal("TERM");
+        let status = d.exit_within(Duration::from_secs(1));
+        assert_eq!(status.code(), Some(0), "exit status after SIGTERM");
+        let out = d.stdout();
+        let rows: Vec<&str> = out.lines().filter(|l| l.contains('▀')).collect();
+        assert_eq!(rows.len(), 16, "stdout: {out:?}");
+        assert!(rows.iter().all(|r| r.matches('▀').count() == 64));
+    }
 }

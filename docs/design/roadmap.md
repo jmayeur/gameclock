@@ -12,7 +12,9 @@ and scope can change. Update this file when a change merges or a plan changes.
    `openspec/changes/archive/2026-11-09-panel-bring-up/measurements.md`. Open
    items: the shimmer glitches (try the GPIO4↔18 jumper) and the 9% refresh
    gap to the legacy driver, which gcc built.
-2. **`dev-simulator`**: a laptop `Panel`, so you can see scenes without the Pi.
+2. **`dev-simulator`**: **done**. `TerminalPanel` draws frames in the terminal
+   (`cargo sim`), so you can see scenes without the Pi. A window and PNG
+   snapshots are not planned.
 3. **`scene-model`**: the scene contract (render, next-change deadline,
    finished), the compositor, and the event-driven loop (ADR-0006). The daemon
    injects time. `jiff` handles the timezone.

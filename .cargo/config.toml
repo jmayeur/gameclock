@@ -1,0 +1,4 @@
+# `cargo sim` runs the daemon with the terminal simulator
+# (openspec/specs/terminal-simulator). Stop it with Ctrl-C.
+[alias]
+sim = "run -p gameclockd --features simulator"

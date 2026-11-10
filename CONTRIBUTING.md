@@ -33,6 +33,17 @@ The short form of [`CLAUDE.md`](CLAUDE.md), which has all the rules.
 8. **New dependencies must be compatible with GPL-2.0.** `deny.toml` rejects
    Apache-2.0-only, GPL-3.0, and AGPL crates.
 
+## Seeing frames without the Pi
+
+```bash
+cargo sim
+```
+
+This runs the daemon with the terminal simulator (`--features simulator`).
+You need a terminal with 24-bit color, at least 64 columns, and 17 lines.
+Stop it with Ctrl-C. If you kill it with SIGKILL, the cursor stays hidden. Run
+`reset` to restore the terminal.
+
 ## Building for the Pi
 
 The Pi build (`--features hzeller`) compiles hzeller's C++ driver from a git
