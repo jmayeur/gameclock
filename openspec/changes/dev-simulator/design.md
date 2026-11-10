@@ -97,8 +97,10 @@ restore the terminal.
   It runs only with `--features simulator`. The existing CLI tests run only
   without features.
 - A script test covers "Driver and simulator together do not build". It runs
-  `cargo check` with both features, expects a failure, and expects the
-  message. The test runs in CI.
+  `cargo-zigbuild check` for the Pi target with both features. It expects a
+  failure and the message. A host check cannot test this: the driver's build
+  script compiles C++ first and fails on the host before the
+  `compile_error!`. So the test needs zig and runs in the CI `pi-build` job.
 
 ## Risks / Trade-offs
 

@@ -3,6 +3,9 @@
 
 use core::fmt;
 
+#[cfg(feature = "simulator")]
+pub mod sim;
+
 use gameclock_core::{Brightness, Frame, Panel, test_pattern};
 
 /// Why the daemon stopped with an error.
