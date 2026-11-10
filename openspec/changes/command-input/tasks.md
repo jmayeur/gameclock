@@ -6,8 +6,8 @@
 
 ## 2. Compositor (`scene-model`)
 
-- [ ] 2.1 Red: write compositor tests for "New base scene shows at the next update" and "Foreground scenes stay on top". Also write "Same image still gives a frame". Also write "Last brightness after an update" and "Last brightness before an update". Run `cargo test -p gameclock-core` and see them fail because `set_base` and `last_brightness` do not exist.
-- [ ] 2.2 Green: add `Compositor::set_base` and `Compositor::last_brightness` (design D6). Verify that the 2.1 tests and `tests/no_alloc.rs` pass.
+- [x] 2.1 Red: write compositor tests for "New base scene shows at the next update" and "Foreground scenes stay on top". Also write "Same image still gives a frame". Also write "Last brightness after an update" and "Last brightness before an update". Run `cargo test -p gameclock-core` and see them fail because `set_base` and `last_brightness` do not exist.
+- [x] 2.2 Green: add `Compositor::set_base` and `Compositor::last_brightness` (design D6). Verify that the 2.1 tests and `tests/no_alloc.rs` pass.
 
 ## 3. Commands and replies (`command-input`)
 
