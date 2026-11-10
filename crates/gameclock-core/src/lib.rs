@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod frame;
+pub mod heartbeat;
 pub mod panel;
 pub mod scene;
 pub mod test_pattern;
@@ -20,3 +21,4 @@ pub use embedded_graphics;
 
 pub use frame::Frame;
 pub use panel::{Brightness, Panel};
+pub use scene::{Compositor, Scene};

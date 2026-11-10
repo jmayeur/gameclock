@@ -15,9 +15,9 @@
 
 ## 3. Heartbeat scene (`heartbeat-scene`)
 
-- [ ] 3.1 Red: write a test for each `heartbeat-scene` scenario. The scenarios are: one changed pixel, the marker at 00:00:00, 00:00:57.999, and 00:00:58, the next change at .250 and .000, never finished, and tiny frames. See them fail because `Heartbeat` does not exist.
-- [ ] 3.2 Green: add `heartbeat::Heartbeat` (D7). Verify that the 3.1 tests pass.
-- [ ] 3.3 Red: write the integration test `crates/gameclock-core/tests/no_alloc.rs` for "Updates do not allocate heap memory" with `allocation_counter::measure`. Make it fail first: allocate a new frame in `update` for one run and see the count above zero. Then remove the allocation and see the test pass.
+- [x] 3.1 Red: write a test for each `heartbeat-scene` scenario. The scenarios are: one changed pixel, the marker at 00:00:00, 00:00:57.999, and 00:00:58, the next change at .250 and .000, never finished, and tiny frames. See them fail because `Heartbeat` does not exist.
+- [x] 3.2 Green: add `heartbeat::Heartbeat` (D7). Verify that the 3.1 tests pass.
+- [x] 3.3 Red: write the integration test `crates/gameclock-core/tests/no_alloc.rs` for "Updates do not allocate heap memory" with `allocation_counter::measure`. Make it fail first: allocate a new frame in `update` for one run and see the count above zero. Then remove the allocation and see the test pass.
 
 ## 4. Event loop and time in the daemon (`daemon-lifecycle`)
 
