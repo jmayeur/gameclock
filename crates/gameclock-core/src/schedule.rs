@@ -149,6 +149,41 @@ impl Schedule {
         Self { rules, default }
     }
 
+    /// The legacy clock's table (`openspec/specs/clock-scene`). Bedtime
+    /// nights are Sunday to Thursday.
+    #[must_use]
+    pub fn legacy() -> Self {
+        const MELLOW: Rgb888 = Rgb888::new(255, 140, 0);
+        const RED: Rgb888 = Rgb888::new(255, 0, 0);
+        const BLUE: Rgb888 = Rgb888::new(0, 0, 255);
+        let bedtime_nights = Weekdays::of(&[
+            Weekday::Sunday,
+            Weekday::Monday,
+            Weekday::Tuesday,
+            Weekday::Wednesday,
+            Weekday::Thursday,
+        ]);
+        let table = [
+            (Weekdays::EACH_DAY, (0, 0), (6, 0), RED, 25),
+            (Weekdays::EACH_DAY, (6, 0), (10, 0), BLUE, 100),
+            (Weekdays::EACH_DAY, (10, 0), (21, 0), BLUE, 60),
+            (Weekdays::EACH_DAY, (21, 0), (23, 0), MELLOW, 60),
+            (bedtime_nights, (23, 0), (23, 15), MELLOW, 100),
+            (Weekdays::EACH_DAY, (23, 0), (24, 0), MELLOW, 25),
+        ];
+        let rules = table
+            .into_iter()
+            .filter_map(|(days, (sh, sm), (eh, em), color, percent)| {
+                let start = TimeOfDay::hm(sh, sm).ok()?;
+                let end = TimeOfDay::hm(eh, em).ok()?;
+                let style = Style::new(color, Brightness::new(percent));
+                Rule::new(days, start, end, style).ok()
+            })
+            .collect();
+        // The rules cover each minute. The default is the style at midnight.
+        Self::new(rules, Style::new(RED, Brightness::new(25)))
+    }
+
     /// The style for the local time and weekday of `now`.
     #[must_use]
     pub fn style_at(&self, now: &Zoned) -> Style {
@@ -220,6 +255,11 @@ mod tests {
 
     fn rule(days: Weekdays, start: TimeOfDay, end: TimeOfDay, style: Style) -> Rule {
         Rule::new(days, start, end, style).unwrap()
+    }
+
+    /// The rules of `America/Los_Angeles`. The core has no zone database.
+    fn los_angeles() -> TimeZone {
+        TimeZone::posix("PST8PDT,M3.2.0,M11.1.0").unwrap()
     }
 
     const WHITE_80: (Rgb888, u8) = (Rgb888::WHITE, 80);
@@ -351,5 +391,60 @@ mod tests {
         ] {
             assert_eq!(s.style_at(&at(time)), style(Rgb888::RED, 25), "at {time}");
         }
+    }
+
+    // The legacy schedule is the default.
+
+    const MELLOW: Rgb888 = Rgb888::new(255, 140, 0);
+
+    #[test]
+    fn each_period_of_the_legacy_schedule() {
+        let s = Schedule::legacy();
+        // 2026-11-10 is a Tuesday, a bedtime night.
+        let expected = [
+            ("05:59", Rgb888::RED, 25),
+            ("06:00", Rgb888::BLUE, 100),
+            ("09:59", Rgb888::BLUE, 100),
+            ("10:00", Rgb888::BLUE, 60),
+            ("20:59", Rgb888::BLUE, 60),
+            ("21:00", MELLOW, 60),
+            ("22:59", MELLOW, 60),
+            ("23:00", MELLOW, 100),
+            ("23:14", MELLOW, 100),
+            ("23:15", MELLOW, 25),
+            ("23:59", MELLOW, 25),
+            ("00:00", Rgb888::RED, 25),
+        ];
+        for (time, color, percent) in expected {
+            let now = at(&format!("2026-11-10T{time}:00Z"));
+            assert_eq!(s.style_at(&now), style(color, percent), "at {time}");
+        }
+    }
+
+    #[test]
+    fn bedtime_nights_are_sunday_to_thursday() {
+        let s = Schedule::legacy();
+        // 2026-11-08 is a Sunday.
+        let expected = [100, 100, 100, 100, 100, 25, 25];
+        for (offset, percent) in (8..=14).zip(expected) {
+            let now = at(&format!("2026-11-{offset:02}T23:05:00Z"));
+            assert_eq!(
+                s.style_at(&now).brightness,
+                Brightness::new(percent),
+                "{now}"
+            );
+        }
+    }
+
+    #[test]
+    fn weekday_of_the_local_date() {
+        let s = Schedule::legacy();
+        // Saturday 07:05 UTC is Friday 23:05 in Los Angeles.
+        let now = "2026-11-14T07:05:00Z"
+            .parse::<Timestamp>()
+            .unwrap()
+            .to_zoned(los_angeles());
+        assert_eq!(now.weekday(), Weekday::Friday);
+        assert_eq!(s.style_at(&now), style(MELLOW, 25));
     }
 }
