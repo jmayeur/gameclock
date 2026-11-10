@@ -11,8 +11,8 @@
 
 ## 3. Schedule (`clock-scene`)
 
-- [ ] 3.1 Red: write `schedule` tests for "Rule times are whole minutes" and "A rule must not be empty". Also write tests for "First matching rule wins", "End time is not part of the rule", "Weekday set limits a rule", and "No rule matches". See them fail because `schedule` does not exist.
-- [ ] 3.2 Green: add `TimeOfDay`, `Weekdays`, `Style`, `Rule`, and `Schedule::style_at` (D2). Verify that the 3.1 tests pass.
+- [x] 3.1 Red: write `schedule` tests for "Rule times are whole minutes" and "A rule must not be empty". Also write tests for "First matching rule wins", "End time is not part of the rule", "Weekday set limits a rule", and "No rule matches". See them fail because `schedule` does not exist.
+- [x] 3.2 Green: add `TimeOfDay`, `Weekdays`, `Style`, `Rule`, and `Schedule::style_at` (D2). Verify that the 3.1 tests pass.
 - [ ] 3.3 Red: write tests for "Each period of the legacy schedule", "Bedtime nights are Sunday to Thursday", and "Weekday of the local date". See them fail because `Schedule::legacy` does not exist.
 - [ ] 3.4 Green: add `Schedule::legacy()`. Verify that the 3.3 tests pass.
 

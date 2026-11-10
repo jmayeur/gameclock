@@ -14,6 +14,7 @@ pub mod frame;
 pub mod heartbeat;
 pub mod panel;
 pub mod scene;
+pub mod schedule;
 pub mod test_pattern;
 
 /// Re-exported, so that other crates draw with the same version.
