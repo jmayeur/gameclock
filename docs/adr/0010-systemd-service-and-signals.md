@@ -1,6 +1,6 @@
 # ADR-0010: Run as a root systemd service with signal-driven shutdown
 
-- **Status:** Accepted
+- **Status:** Accepted. The signal wait is changed by ADR-0013.
 - **Date:** 2026-11-09
 - **Related:** ADR-0004, ADR-0006, ADR-0007, ADR-0009. OpenSpec change
   `panel-bring-up`.

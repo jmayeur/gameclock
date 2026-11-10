@@ -19,6 +19,8 @@ simulator = []
 gameclock-core.workspace = true
 rgbmatrix-sys = { workspace = true, optional = true }
 signal-hook.workspace = true
+# The system time zone and the zone files in /usr/share/zoneinfo (docs/adr/0013).
+jiff = { workspace = true, features = ["tz-system", "tzdb-zoneinfo"] }
 
 [lints]
 workspace = true

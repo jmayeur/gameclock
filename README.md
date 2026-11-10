@@ -4,7 +4,8 @@ A clock and message board for a 64×32 RGB LED matrix. A Raspberry Pi Zero W
 drives the matrix through an Adafruit RGB Matrix HAT. The code is Rust, tuned
 for one ARMv6 core.
 
-> **Status:** the daemon drives the real panel and shows a test pattern. The
+> **Status:** the daemon drives the real panel. It shows a test pattern with
+> a marker that moves each second, through the scene model. The
 > clock and other features come next, one at a time, through
 > [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
@@ -29,7 +30,7 @@ result is flicker. So the design keeps the app out of the way:
 
 ```
 crates/
-  gameclock-core/   pure logic: Frame, Panel trait, test pattern (no hardware, no I/O)
+  gameclock-core/   pure logic: Frame, Panel, scenes, compositor (no hardware, no I/O)
   gameclockd/       the daemon: arguments, signals, panel choice, lifecycle
   rgbmatrix-sys/    hzeller FFI and HzellerPanel (the only crate with unsafe)
 vendor/

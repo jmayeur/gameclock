@@ -12,6 +12,10 @@ publish.workspace = true
 # Anything that would break that belongs in gameclockd or a driver crate.
 [dependencies]
 embedded-graphics.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+allocation-counter.workspace = true
 
 [lints]
 workspace = true

@@ -17,11 +17,20 @@
   live in `/etc/default/gameclockd`.
 - **STE**: Simplified Technical English (ASD-STE100), the writing standard for
   all text in the repo (ADR-0011).
-- **Scene** *(planned)*: a self-contained panel behavior (clock, message,
-  alert) that renders frames from its own state plus injected time and input.
-- **Compositor** *(planned)*: decides which scene or scenes are visible and
-  handles priorities and transitions. The only component that knows about more
-  than one scene.
+- **Scene**: a self-contained panel behavior (clock, message, alert). It
+  renders frames from its own state and the injected time. It reports its
+  next change and when it is finished (ADR-0012).
+- **Compositor**: decides which scene is visible: the base scene, or the
+  newest foreground scene. It is the only component that knows about more
+  than one scene. Planned: priorities and transitions.
+- **Base scene / foreground scene**: the compositor always shows the base
+  scene when no foreground scene is on the stack. A foreground scene shows on
+  top until it finishes. The compositor then removes it.
+- **Deadline**: the time of the next render. The compositor gives the top
+  scene's next change, at least 33 ms after the update. The daemon waits
+  until the deadline or a stop signal.
+- **Heartbeat**: the temporary base scene. It is the test pattern with one
+  white pixel that moves one column each second on row 1.
 - **Render on change**: the daemon presents a frame only when it differs from
   the last one, and sleeps until the next scheduled change (ADR-0006).
 - **hzeller**: Henner Zeller's `rpi-rgb-led-matrix`, the GPL-2.0-only C++ driver

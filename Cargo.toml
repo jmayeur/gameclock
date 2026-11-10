@@ -22,6 +22,10 @@ rgbmatrix-sys = { path = "crates/rgbmatrix-sys" }
 cc = "1.11.1"
 # Blocking, thread-free signal waits for gameclockd (docs/adr/0010).
 signal-hook = "0.4.6"
+# Time and time zones (docs/adr/0013). Each crate adds the features it needs.
+jiff = { version = "0.2.42", default-features = false, features = ["std"] }
+# Test only: counts heap allocations (docs/adr/0012).
+allocation-counter = "0.8.1"
 
 [workspace.lints.rust]
 unsafe_code = "deny" # FFI crates opt out explicitly, with an ADR.

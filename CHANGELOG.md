@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Scene model (OpenSpec `scene-model`, ADR-0012, ADR-0013):
+  - `gameclock-core`: the `Scene` trait, the `Compositor`, and the
+    `Heartbeat` scene. A test checks that updates allocate no heap memory.
+  - `gameclockd`: the event-driven loop. It waits on the signal pipe with a
+    timeout until the next scene change. It reads the system time zone once
+    at startup, with a UTC fallback.
+  - New dependency `jiff`. New dev-dependency `allocation-counter`.
 - Terminal simulator (OpenSpec `dev-simulator`): `TerminalPanel` draws
   frames in a 24-bit color terminal. Run it with `cargo sim`. The `simulator`
   feature selects it. It cannot be used with `hzeller`.
@@ -30,6 +37,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Changed
 
+- `gameclockd` no longer presents the test pattern only once. It shows the
+  heartbeat and presents once each second (OpenSpec `scene-model`).
 - Docs, specs, code comments, and messages rewritten in STE. Accepted ADRs got
   mechanical fixes only. Error and notice text in `gameclockd` and
   `rgbmatrix-sys` changed (for example, "unknown argument" replaces
