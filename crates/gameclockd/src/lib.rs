@@ -168,7 +168,7 @@ pub fn run<P: Panel>(
     let mut compositor = Compositor::new(base, width, height);
     loop {
         let now = clock.now();
-        if let Some(frame) = compositor.update(&now) {
+        if let Some((frame, _)) = compositor.update(&now) {
             panel
                 .present(frame, Brightness::MAX)
                 .map_err(RunError::Present)?;

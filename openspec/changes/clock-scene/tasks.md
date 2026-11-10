@@ -6,8 +6,8 @@
 
 ## 2. Scene brightness (`scene-model`)
 
-- [ ] 2.1 Red: write compositor tests for "Scenes give a brightness" (default full, top scene's brightness) and "Changed brightness gives a frame". Write the heartbeat test "Full brightness at each time". Change the existing `update` tests to the new result type. Run `cargo test -p gameclock-core` and see them fail because `Scene::brightness` and the new result do not exist.
-- [ ] 2.2 Green: add `Scene::brightness` with the default `Brightness::MAX`. Make `Compositor::update` give the frame and the brightness, and compare both (design D1). Verify that the 2.1 tests and `tests/no_alloc.rs` pass. `Heartbeat` does not change: the default method gives its brightness.
+- [x] 2.1 Red: write compositor tests for "Scenes give a brightness" (default full, top scene's brightness) and "Changed brightness gives a frame". Write the heartbeat test "Full brightness at each time". Change the existing `update` tests to the new result type. Run `cargo test -p gameclock-core` and see them fail because `Scene::brightness` and the new result do not exist.
+- [x] 2.2 Green: add `Scene::brightness` with the default `Brightness::MAX`. Make `Compositor::update` give the frame and the brightness, and compare both (design D1). Verify that the 2.1 tests and `tests/no_alloc.rs` pass. `Heartbeat` does not change: the default method gives its brightness.
 
 ## 3. Schedule (`clock-scene`)
 
