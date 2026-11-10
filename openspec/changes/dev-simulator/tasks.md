@@ -24,11 +24,11 @@
 - [x] 3.2 Red: add `scripts/test-feature-exclusive.sh` for "Driver and simulator together do not build". It runs `cargo-zigbuild check` for the Pi target with `--features hzeller,simulator`, expects a failure, and expects the message (design D8: on the host, the C++ build fails first). Verify that it fails now, because the build passes.
 - [x] 3.3 Green: in `main.rs`, add the `simulator` panel module with the stderr notice and the `--led-*` notice (design D6), and add the `compile_error!` for both features. Verify that 3.1 and 3.2 pass, and that `cargo test` without features still passes.
 - [x] 3.4 Add `.cargo/config.toml` with the `sim` alias. Verify that `cargo sim` starts the simulator.
-- [ ] 3.5 Manual: run `cargo sim` in a 24-bit color terminal of at least 64 columns and 17 lines. Verify "Test pattern in a terminal": the corners, border, bars, and ramp are correct, and Ctrl-C returns the terminal to normal. Record the result in the PR.
+- [x] 3.5 Manual: run `cargo sim` in a 24-bit color terminal of at least 64 columns and 17 lines. Verify "Test pattern in a terminal": the corners, border, bars, and ramp are correct, and Ctrl-C returns the terminal to normal. Record the result in the PR.
 
 ## 4. CI
 
-- [ ] 4.1 In the `check` job, add `cargo clippy --all-targets --features simulator -- -D warnings` and `cargo test --features simulator`. Add `scripts/test-feature-exclusive.sh` to the `pi-build` job, which has zig. Verify that CI passes on the PR, and that the Pi build job and `scripts/check-pi-binary.sh` still pass (the Pi binary does not change).
+- [x] 4.1 In the `check` job, add `cargo clippy --all-targets --features simulator -- -D warnings` and `cargo test --features simulator`. Add `scripts/test-feature-exclusive.sh` to the `pi-build` job, which has zig. Verify that CI passes on the PR, and that the Pi build job and `scripts/check-pi-binary.sh` still pass (the Pi binary does not change).
 
 ## 5. Docs
 
