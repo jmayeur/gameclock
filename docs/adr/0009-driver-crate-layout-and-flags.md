@@ -1,6 +1,6 @@
 # ADR-0009: Driver crate layout, feature-gated C++ build, and pass-through driver flags
 
-- **Status:** Accepted
+- **Status:** Accepted. The default GPIO mapping is changed by ADR-0015.
 - **Date:** 2026-11-09
 - **Related:** Refines ADR-0004. Relies on ADR-0003, ADR-0005, ADR-0007.
   OpenSpec change `panel-bring-up`

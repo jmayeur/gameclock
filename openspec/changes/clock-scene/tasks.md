@@ -42,13 +42,13 @@
 ## 7. On-device verification and measurements
 
 - [x] 7.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/clock-scene/measurements.md`.
-- [ ] 7.2 Deploy to the Pi with `scripts/deploy.sh`. Verify "Service replaces the legacy clock": the legacy clock stops, and the panel shows the time in the color of the current schedule period.
+- [x] 7.2 Deploy to the Pi with `scripts/deploy.sh`. Verify "Service replaces the legacy clock": the legacy clock stops, and the panel shows the time in the color of the current schedule period.
 - [x] 7.3 Run "Clock daemon wakes only each minute": wait 10 s, then run `scripts/measure.sh` for 60 s with `--led-pwm-bits=8`. Record per-thread CPU %, voluntary context switches, RSS, and the `--led-show-refresh` rate.
 - [x] 7.4 Repeat 7.3 with `--led-pwm-bits=11` in `/etc/default/gameclockd`. Record the same values. Then remove the override.
-- [ ] 7.5 Run "Clock colors at 8 PWM bits": add a temporary systemd drop-in with a `TZ` value. Select the value so that the local time is in a red 25 period. Then do the same for a mellow 25 period. Ask the user to look at each. Remove the drop-in.
+- [x] 7.5 Run "Clock colors at 8 PWM bits": add a temporary systemd drop-in with a `TZ` value. Select the value so that the local time is in a red 25 period. Then do the same for a mellow 25 period. Ask the user to look at each. Remove the drop-in.
 - [x] 7.6 Run "Heartbeat daemon wakes only each second" with `--test-pattern` for 60 s, to show the diagnostic mode still works. Record the values.
-- [ ] 7.7 Write ADR-0015 (driver settings for the clock: the `adafruit-hat-pwm` mapping and 8 PWM bits). Use the 7.3 to 7.5 results and the mapping comparison. Add it to the index. Add a status note to ADR-0009 that ADR-0015 changes its default mapping. If the results do not support 8 bits, change the `pi-deployment` delta, the unit, and `scripts/test-unit.sh` back before you continue. Verify with `scripts/lint-docs.sh`.
-- [ ] 7.9 Deploy the build with the 6.4 default. Run "The PWM mapping has no moving lines" with no flag in `/etc/default/gameclockd`. Measure the refresh rate and CPU again, and record them.
+- [x] 7.7 Write ADR-0015 (driver settings for the clock: the `adafruit-hat-pwm` mapping and 8 PWM bits). Use the 7.3 to 7.5 results and the mapping comparison. Add it to the index. Add a status note to ADR-0009 that ADR-0015 changes its default mapping. If the results do not support 8 bits, change the `pi-deployment` delta, the unit, and `scripts/test-unit.sh` back before you continue. Verify with `scripts/lint-docs.sh`.
+- [x] 7.9 Deploy the build with the 6.4 default. Run "The PWM mapping has no moving lines" with no flag in `/etc/default/gameclockd`. Measure the refresh rate and CPU again, and record them.
 - [ ] 7.8 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 8. Docs and final verification

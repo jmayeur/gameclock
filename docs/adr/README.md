@@ -33,3 +33,4 @@ zero-padded) and add it to the index below.
 | [0012](0012-scenes-and-compositor.md) | Scenes and the compositor | Accepted |
 | [0013](0013-time-and-deadline-wait.md) | Time with jiff, and the deadline wait | Accepted |
 | [0014](0014-scene-brightness-and-schedule.md) | Scene brightness and the time-of-day schedule | Accepted |
+| [0015](0015-driver-settings-for-the-clock.md) | Driver settings for the clock: the PWM mapping and 8 PWM bits | Accepted |
