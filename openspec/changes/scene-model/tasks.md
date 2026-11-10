@@ -31,14 +31,14 @@
 
 ## 5. On-device verification and measurements
 
-- [ ] 5.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size before and after this change in `openspec/changes/scene-model/measurements.md`.
+- [x] 5.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size before and after this change in `openspec/changes/scene-model/measurements.md`.
 - [ ] 5.2 Deploy to the Pi with `scripts/deploy.sh`. Verify by eye that the marker moves once each second and that the test pattern did not change.
-- [ ] 5.3 Run "Heartbeat daemon wakes only each second (on-device)": wait 10 s, then run `scripts/measure.sh` for 60 s. Record the per-thread CPU %, voluntary context switches, RSS, and the `--led-show-refresh` rate in `measurements.md`. Compare them with the bring-up baseline. Stop and report if the main thread uses 1% or more of one core, or if the refresh rate falls by more than 2%.
+- [x] 5.3 Run "Heartbeat daemon wakes only each second (on-device)": wait 10 s, then run `scripts/measure.sh` for 60 s. Record the per-thread CPU %, voluntary context switches, RSS, and the `--led-show-refresh` rate in `measurements.md`. Compare them with the bring-up baseline. Stop and report if the main thread uses 1% or more of one core, or if the refresh rate falls by more than 2%.
 - [ ] 5.4 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 6. Final verification
 
-- [ ] 6.1 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
+- [x] 6.1 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
 - [ ] 6.2 Push the branch, open the PR, and verify that all CI jobs pass.
 
 ## Workflow follow-up
