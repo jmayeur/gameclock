@@ -12,6 +12,7 @@
 
 pub mod frame;
 pub mod panel;
+pub mod test_pattern;
 
 /// Re-exported so downstream crates draw with the exact same version.
 pub use embedded_graphics;

@@ -9,9 +9,9 @@
 
 ## 2. Test pattern (gameclock-core)
 
-- [ ] 2.1 Write failing tests in `crates/gameclock-core/src/test_pattern.rs` for every `specs/test-pattern` scenario (corners, border, bar order, monotonic gray ramp, determinism, 0×0/1×1/2×5/5×2 frames). Verify `cargo test -p gameclock-core` fails on them.
-- [ ] 2.2 Implement `test_pattern::render` with `embedded-graphics` primitives and saturating layout math, export it from `lib.rs`. Verify `cargo test -p gameclock-core` passes.
-- [ ] 2.3 Add "Test pattern" to `docs/design/glossary.md` and the core's types in `docs/design/architecture.md`. Verify both docs mention `test_pattern`.
+- [x] 2.1 Write failing tests in `crates/gameclock-core/src/test_pattern.rs` for every `specs/test-pattern` scenario (corners, border, bar order, monotonic gray ramp, determinism, 0×0/1×1/2×5/5×2 frames). Verify `cargo test -p gameclock-core` fails on them.
+- [x] 2.2 Implement `test_pattern::render` with `embedded-graphics` primitives and saturating layout math, export it from `lib.rs`. Verify `cargo test -p gameclock-core` passes.
+- [x] 2.3 Add "Test pattern" to `docs/design/glossary.md` and the core's types in `docs/design/architecture.md`. Verify both docs mention `test_pattern`.
 
 ## 3. Driver crate, host-testable parts (rgbmatrix-sys)
 

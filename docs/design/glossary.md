@@ -4,6 +4,9 @@
   `embedded-graphics` `DrawTarget`).
 - **Panel**: anything that can display a `Frame` at a `Brightness`: the hzeller
   driver, a simulator, a test recorder. Panels only blit pixels.
+- **Test pattern**: the diagnostic image from `gameclock_core::test_pattern`:
+  colored corner markers (orientation), a white border (missing edges), color
+  bars (channel order), and a gray ramp (color depth). Not a scene.
 - **Scene** *(planned)*: a self-contained display behavior (clock, message,
   alert) that renders frames from its own state plus injected time and input.
 - **Compositor** *(planned)*: decides which scene or scenes are visible and

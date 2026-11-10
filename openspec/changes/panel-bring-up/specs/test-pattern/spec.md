@@ -29,23 +29,30 @@ blocks, in white, so a missing row or column at any edge is visible.
 - **WHEN** the test pattern is rendered into a 64×32 frame
 - **THEN** every pixel in row 0, row 31, column 0, and column 63 that lies outside a corner block is white (255,255,255)
 
+### Requirement: Content area sits inside the markers
+The test pattern's bars and ramp SHALL occupy a content area inset 3 pixels
+from every edge, so they never overlap the border or the corner markers. Pixels
+between the border and the content area SHALL be black.
+
+#### Scenario: Margin is black
+- **WHEN** the test pattern is rendered into a 64×32 frame
+- **THEN** every pixel with x in 1..3 or 61..63, or y in 1..3 or 29..31, that is neither on the border nor in a corner block is black
+
 ### Requirement: Color bars show channel order
-Inside the border, the upper half of the test pattern SHALL contain vertical
-bars of red, green, blue, cyan, magenta, yellow, and white, left to right, at
-full intensity.
+The upper half of the content area SHALL contain vertical bars of red, green,
+blue, cyan, magenta, yellow, and white, left to right, at full intensity.
 
 #### Scenario: Bars appear in order
 - **WHEN** the test pattern is rendered into a 64×32 frame
-- **THEN** sampling the middle row of the upper interior from left to right yields the colors red, green, blue, cyan, magenta, yellow, white in that order with no other colors between them
+- **THEN** sampling the middle row of the upper half of the content area from left to right yields the colors red, green, blue, cyan, magenta, yellow, white in that order with no other colors between them
 
 ### Requirement: Gray ramp shows color depth
-Inside the border, the lower half of the test pattern SHALL contain a
-horizontal gray ramp whose brightness never decreases from left to right,
+The lower half of the content area SHALL contain a horizontal gray ramp whose brightness never decreases from left to right,
 starting at or near black and ending at or near white.
 
 #### Scenario: Ramp is monotonic
 - **WHEN** the test pattern is rendered into a 64×32 frame
-- **THEN** along any row of the lower interior, each pixel has equal red, green, and blue values
+- **THEN** along any row of the lower half of the content area, each pixel has equal red, green, and blue values
 - **AND** each pixel's value is greater than or equal to the pixel to its left
 - **AND** the leftmost value is at most 16 and the rightmost value is at least 240
 

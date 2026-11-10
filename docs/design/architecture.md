@@ -22,7 +22,7 @@
 
 | Crate | Status | Responsibility |
 |---|---|---|
-| `gameclock-core` | **Exists** | Pure logic. `Frame` (a row-major RGB buffer that implements `embedded-graphics`' `DrawTarget`), the `Panel` trait, and `Brightness`. No hardware, I/O, threads, or wall clock (ADR-0005). |
+| `gameclock-core` | **Exists** | Pure logic. `Frame` (a row-major RGB buffer that implements `embedded-graphics`' `DrawTarget`), the `Panel` trait, `Brightness`, and the diagnostic `test_pattern`. No hardware, I/O, threads, or wall clock (ADR-0005). |
 | `gameclockd` | **Exists (stub)** | The daemon. Will own the event loop, time source, config, command input, and panel selection. |
 | `rgbmatrix-sys` | **Planned** | Hand-written FFI to hzeller's C API, plus a `build.rs` that compiles the vendored, pinned submodule (ADR-0004). The only crate allowed `unsafe`. |
 | hzeller `Panel` | **Planned** | A safe wrapper that implements `Panel` by copying a `Frame` into an offscreen canvas and swapping on vsync. |
@@ -36,6 +36,8 @@
 - **`Panel`**: `dimensions()` and `present(&Frame, Brightness)`. Implementations
   only blit pixels.
 - **`Brightness`**: a percentage clamped to 0–100.
+- **`test_pattern::render`**: draws the diagnostic test pattern into any
+  `Rgb888` `DrawTarget` (normally a `Frame`). Depends only on the target's size.
 
 ## Data flow (planned)
 
