@@ -16,6 +16,7 @@ hzeller = ["dep:rgbmatrix-sys", "rgbmatrix-sys/link"]
 [dependencies]
 gameclock-core.workspace = true
 rgbmatrix-sys = { workspace = true, optional = true }
+signal-hook.workspace = true
 
 [lints]
 workspace = true

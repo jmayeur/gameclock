@@ -108,6 +108,13 @@ impl RGBLedMatrixOptions {
 }
 
 unsafe extern "C" {
+    /// The RP1 (Pi 5) backend's entry in the `piochips` ELF section
+    /// (`DECLARE_PIO_CHIP` in the vendored piolib). piolib walks that section
+    /// with `__start_piochips`/`__stop_piochips`, but LLD's `--gc-sections`
+    /// doesn't treat those as references, drops the section, and the link
+    /// fails. Referencing the entry keeps the section; see [`retain_sections`].
+    static __ptr_rp1_pio_chip: *const core::ffi::c_void;
+
     /// Create a matrix from `options`, parsing `--led-*` flags out of
     /// `argc`/`argv` over them and removing the flags it consumed. Returns
     /// null on bad flags or failed hardware init (after printing why).
@@ -144,4 +151,13 @@ unsafe extern "C" {
         height: c_int,
         colors: *mut Color,
     );
+}
+
+/// Keep linker sections the driver finds by name, rather than by symbol,
+/// alive under `--gc-sections`. Call it from code that is always linked.
+#[inline(never)]
+pub fn retain_sections() {
+    // Taking the address doesn't read the static, so this is safe; the
+    // black box keeps the reference from being optimized away.
+    core::hint::black_box(&raw const __ptr_rp1_pio_chip);
 }

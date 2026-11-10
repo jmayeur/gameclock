@@ -46,6 +46,7 @@ impl HzellerPanel {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
+        ffi::retain_sections();
         let mut owned = vec![c"gameclockd".to_owned()];
         for arg in args {
             let arg = arg.into();

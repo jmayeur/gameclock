@@ -89,6 +89,12 @@ Facts about the pinned upstream (`hzeller/rpi-rgb-led-matrix`
 - Driver tuning needs no rebuild (flags live in the service's environment
   file, ADR-0010), but flag names are hzeller's, so a future config file will
   have to map onto them or replace them.
+- The RP1 backend's `piolib` finds its chips through a custom `piochips` ELF
+  section and the `__start_`/`__stop_` symbols. LLD's `--gc-sections` drops
+  that section (the link fails with `undefined symbol: __stop_piochips`), and
+  zig rejects `-z nostart-stop-gc`. `ffi::retain_sections` references the
+  section's entry (`__ptr_rp1_pio_chip`) so it stays. A submodule bump that
+  renames it fails at link time.
 - We compile RP1 code we never run on the Zero. It costs build time and some
   binary size, not runtime.
 - **Fallback:** if the pinned commit misbehaves on the Zero or on Buster, pin

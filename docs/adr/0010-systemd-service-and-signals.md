@@ -42,7 +42,8 @@ can't call `sigwait` itself.
   before the driver starts, so a stop request during initialization isn't
   lost. On a signal, it drops the panel (blanking it) and exits 0.
 - **New dependency:** `signal-hook` (MIT OR Apache-2.0, used under MIT), which
-  brings in `signal-hook-registry` and `libc` (both MIT OR Apache-2.0).
+  brings in `signal-hook-registry`, `libc`, and `errno` (all MIT OR
+  Apache-2.0).
 
 ## Consequences
 
