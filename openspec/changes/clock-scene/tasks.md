@@ -18,11 +18,11 @@
 
 ## 4. Clock scene (`clock-scene`)
 
-- [ ] 4.1 Red: write a `clock` test for each scenario of "The clock shows the local time in the legacy format". Also write "Text color and brightness from the style". The expected frame has the text in `FONT_7X13_BOLD` on a new frame. The text is at (8, 20) with `Baseline::Alphabetic`. See them fail because `Clock` does not exist.
-- [ ] 4.2 Green: add `clock::Clock` with `render` and `brightness` (D3). Verify that the 4.1 tests pass.
-- [ ] 4.3 Red: write tests for "Next change inside a minute" and "Next change on a whole minute". Also write tests for "Next change across the daylight saving time gap" and "Never finished". See them fail for the expected reason with a stub `next_change`.
-- [ ] 4.4 Green: implement `next_change` and `is_finished`. Verify that the 4.3 tests pass.
-- [ ] 4.5 Red: add "One thousand minutes allocate nothing" to `tests/no_alloc.rs`. Make it fail first with a `String` in `render` for one run. Then remove it and see the test pass.
+- [x] 4.1 Red: write a `clock` test for each scenario of "The clock shows the local time in the legacy format". Also write "Text color and brightness from the style". The expected frame has the text in `FONT_7X13_BOLD` on a new frame. The text is at (8, 20) with `Baseline::Alphabetic`. See them fail because `Clock` does not exist.
+- [x] 4.2 Green: add `clock::Clock` with `render` and `brightness` (D3). Verify that the 4.1 tests pass.
+- [x] 4.3 Red: write tests for "Next change inside a minute" and "Next change on a whole minute". Also write tests for "Next change across the daylight saving time gap" and "Never finished". See them fail for the expected reason with a stub `next_change`.
+- [x] 4.4 Green: implement `next_change` and `is_finished`. Verify that the 4.3 tests pass.
+- [x] 4.5 Red: add "One thousand minutes allocate nothing" to `tests/no_alloc.rs`. Make it fail first with a `String` in `render` for one run. Then remove it and see the test pass.
 
 ## 5. Daemon (`daemon-lifecycle`)
 
