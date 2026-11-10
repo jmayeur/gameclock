@@ -15,9 +15,9 @@
 
 ## 3. Driver crate, host-testable parts (rgbmatrix-sys)
 
-- [ ] 3.1 Create `crates/rgbmatrix-sys` (workspace member, `#![allow(unsafe_code)]` at crate root with a comment pointing to ADR-0009, `link` feature off by default, `cc` as an optional build dependency in `[workspace.dependencies]`). Verify `cargo build` and `cargo deny check` pass.
-- [ ] 3.2 Write failing tests for the `options` defaults scenario ("Built-in defaults describe this Pi") and the `convert` scenarios (row-major conversion, brightness 1/40/100 mapping, brightness 0 blanks, dimension mismatch reported with both sizes and no buffer write). Verify they fail.
-- [ ] 3.3 Implement `options::DEFAULTS`, `convert::prepare`, and the `Error` enum (`DimensionMismatch`, `Init`). Verify `cargo test -p rgbmatrix-sys` passes and `cargo clippy --all-targets -- -D warnings` is clean.
+- [x] 3.1 Create `crates/rgbmatrix-sys` (workspace member, `#![allow(unsafe_code)]` at crate root with a comment pointing to ADR-0009, `link` feature off by default, `cc` as an optional build dependency in `[workspace.dependencies]`). Verify `cargo build` and `cargo deny check` pass.
+- [x] 3.2 Write failing tests for the `options` defaults scenario ("Built-in defaults describe this Pi") and the `convert` scenarios (row-major conversion, brightness 1/40/100 mapping, brightness 0 blanks, dimension mismatch reported with both sizes and no buffer write). Verify they fail.
+- [x] 3.3 Implement `options::DEFAULTS`, `convert::prepare`, and the `Error` enum (`DimensionMismatch`, `Init`). Verify `cargo test -p rgbmatrix-sys` passes and `cargo clippy --all-targets -- -D warnings` is clean.
 
 ## 4. Driver crate, linked parts (rgbmatrix-sys `link`)
 

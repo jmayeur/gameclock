@@ -17,6 +17,9 @@ publish = false
 [workspace.dependencies]
 gameclock-core = { path = "crates/gameclock-core" }
 embedded-graphics = "0.8.2"
+rgbmatrix-sys = { path = "crates/rgbmatrix-sys" }
+# Build-time only: compiles the vendored C++ driver (docs/adr/0009).
+cc = "1.11.1"
 
 [workspace.lints.rust]
 unsafe_code = "deny" # FFI crates opt out explicitly, with an ADR.
