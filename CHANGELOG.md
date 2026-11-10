@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Clock scene (OpenSpec `clock-scene`, ADR-0014, ADR-0015):
+  - `gameclock-core`: the `Clock` scene (`09:05PM` in a 7×13 bold font) and
+    the time-of-day `Schedule` as data, with the legacy table as the default.
+    `Scene::brightness`, and the compositor gives the brightness with the
+    frame.
+  - `gameclockd`: shows the clock as the base scene, at the scene's
+    brightness. `--test-pattern` shows the heartbeat.
 - Scene model (OpenSpec `scene-model`, ADR-0012, ADR-0013):
   - `gameclock-core`: the `Scene` trait, the `Compositor`, and the
     `Heartbeat` scene. A test checks that updates allocate no heap memory.
@@ -37,6 +44,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Changed
 
+- `gameclockd` shows the clock, not the heartbeat. It presents once each
+  minute (OpenSpec `clock-scene`).
+- The built-in GPIO mapping is `adafruit-hat-pwm`, not `adafruit-hat`. The
+  service unit passes `--led-pwm-bits=8`. This removes the moving white lines
+  and raises the refresh rate from 147 Hz to 176 Hz (ADR-0015).
 - `gameclockd` no longer presents the test pattern only once. It shows the
   heartbeat and presents once each second (OpenSpec `scene-model`).
 - Docs, specs, code comments, and messages rewritten in STE. Accepted ADRs got

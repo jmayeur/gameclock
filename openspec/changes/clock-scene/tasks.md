@@ -49,11 +49,11 @@
 - [x] 7.6 Run "Heartbeat daemon wakes only each second" with `--test-pattern` for 60 s, to show the diagnostic mode still works. Record the values.
 - [x] 7.7 Write ADR-0015 (driver settings for the clock: the `adafruit-hat-pwm` mapping and 8 PWM bits). Use the 7.3 to 7.5 results and the mapping comparison. Add it to the index. Add a status note to ADR-0009 that ADR-0015 changes its default mapping. If the results do not support 8 bits, change the `pi-deployment` delta, the unit, and `scripts/test-unit.sh` back before you continue. Verify with `scripts/lint-docs.sh`.
 - [x] 7.9 Deploy the build with the 6.4 default. Run "The PWM mapping has no moving lines" with no flag in `/etc/default/gameclockd`. Measure the refresh rate and CPU again, and record them.
-- [ ] 7.8 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
+- [x] 7.8 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 8. Docs and final verification
 
-- [ ] 8.1 Update `docs/design/architecture.md` (clock, schedule, brightness flow, base scene selection). Update `glossary.md` (schedule, rule, style, bedtime night, test-pattern mode), `roadmap.md` (mark `clock-scene` done). Update `docs/hardware/pi-zero-w.md` (the mapping, the GPIO4↔18 link, the glitch finding, and PWM bits), the README status line, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 8.1 Update `docs/design/architecture.md` (clock, schedule, brightness flow, base scene selection). Update `glossary.md` (schedule, rule, style, bedtime night, test-pattern mode), `roadmap.md` (mark `clock-scene` done). Update `docs/hardware/pi-zero-w.md` (the mapping, the GPIO4↔18 link, the glitch finding, and PWM bits), the README status line, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
 - [ ] 8.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
 - [ ] 8.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
