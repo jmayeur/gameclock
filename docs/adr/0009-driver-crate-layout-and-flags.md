@@ -4,8 +4,7 @@
 - **Date:** 2026-11-09
 - **Related:** Refines ADR-0004. Relies on ADR-0003, ADR-0005, ADR-0007.
   OpenSpec change `panel-bring-up`
-  (`openspec/changes/panel-bring-up/`, archived under
-  `openspec/changes/archive/` once merged).
+  (`openspec/changes/archive/2026-11-09-panel-bring-up/`).
 
 ## Context
 

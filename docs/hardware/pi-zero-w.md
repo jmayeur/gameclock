@@ -49,7 +49,7 @@ linked into the binary, so the Pi's own 2023 copy is not used (ADR-0009).
 ## Tuning notes for a single-core Zero
 
 Measured at bring-up
-(`openspec/changes/panel-bring-up/measurements.md`, archived with the change):
+(`openspec/changes/archive/2026-11-09-panel-bring-up/measurements.md`):
 
 - The refresh thread uses about 52% of the core with the default settings.
   The application uses close to none.
