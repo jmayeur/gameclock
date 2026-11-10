@@ -16,7 +16,7 @@ jobs:
     name: fmt · clippy · test · armv6
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Installs the toolchain, components, and targets from rust-toolchain.toml.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - run: cargo fmt --all -- --check
@@ -29,5 +29,5 @@ jobs:
     name: licenses · advisories
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
