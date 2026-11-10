@@ -32,4 +32,4 @@ device can set a different value.
 
 #### Scenario: Clock colors at 8 PWM bits (on-device)
 - **WHEN** the service shows the clock at brightness 25 in red and in mellow
-- **THEN** a person sees each color as steady and correct, with no visible color steps or flicker
+- **THEN** a person sees each color as steady and correct, with no visible color steps, flicker, or moving lines

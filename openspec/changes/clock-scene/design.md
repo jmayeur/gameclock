@@ -104,11 +104,29 @@ later flag wins. ADR-0015 records the measured numbers. The numbers or the look
 at low brightness can fail to support 8 bits. Then the ADR records that. The
 `pi-deployment` delta and the unit then change back before the archive.
 
+### 6. The PWM mapping is the built-in default (ADR-0015)
+
+`rgbmatrix-sys` `DEFAULTS.hardware_mapping` becomes `adafruit-hat-pwm`.
+This mapping drives the panel's output-enable line from the Pi's hardware
+pulse on GPIO18. That needs the GPIO4↔18 link on the HAT. On this Pi, the
+legacy Python driver uses this mapping, and its image is correct. So the
+link is there.
+A flag on the command line still replaces the default.
+
+Alternatives:
+
+- **A flag in the unit only.** Then a manual start of `gameclockd` shows the
+  lines again.
+- **A separate change.** The clock is not usable with the lines.
+
 ## Risks / Trade-offs
 
 - [A time zone with an offset that is not whole minutes] → The clock wakes
   some seconds away from the local minute. No current tzdb zone has one. A
   test documents the assumption.
+- [A HAT with no GPIO4↔18 link] → With `adafruit-hat-pwm`, its output-enable
+  line is not driven. A start with `--led-gpio-mapping=adafruit-hat` in
+  `/etc/default/gameclockd` is the fallback. The hardware doc records it.
 - [Fewer PWM bits make dark colors less smooth] → The clock uses a few
   saturated colors. The on-device scenario checks red and mellow at
   brightness 25 before ADR-0015 is accepted.

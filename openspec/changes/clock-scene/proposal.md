@@ -30,6 +30,11 @@ keeps the legacy look, but the schedule becomes data.
   accepts one argument that is not a `--led-*` flag.
 - The service unit passes **`--led-pwm-bits=8`** if the on-device
   measurements and a look at the clock colors at low brightness support it.
+- The driver's built-in GPIO mapping becomes **`adafruit-hat-pwm`**. The
+  first look at the clock on the Pi showed white lines that move down the
+  panel with `adafruit-hat`. The legacy clock uses `adafruit-hat-pwm` and has
+  no lines. With that mapping, `gameclockd` also has no lines, and the
+  refresh rate goes up from 156 Hz to 176 Hz.
 
 ## Capabilities
 
@@ -49,6 +54,8 @@ keeps the legacy look, but the schedule becomes data.
   scene. It always uses full brightness.
 - `pi-deployment`: the service shows the clock. The unit passes the PWM-bits
   value that the measurements select.
+- `hzeller-panel`: the built-in GPIO mapping is `adafruit-hat-pwm`, not
+  `adafruit-hat`.
 
 ## ADRs
 
@@ -57,9 +64,9 @@ keeps the legacy look, but the schedule becomes data.
   (injected time).
 - **New ADR-0014: Scene brightness and the time-of-day schedule.** It changes
   the `Scene` trait boundary, and it makes the schedule data in the core.
-- **New ADR-0015: PWM bits for the clock.** It records a hardware and
-  deployment choice from on-device numbers. If the numbers do not support 8
-  bits, the ADR records that choice, and the unit stays as it is.
+- **New ADR-0015: Driver settings for the clock.** It records two hardware
+  and deployment choices from on-device numbers: the `adafruit-hat-pwm`
+  mapping and 8 PWM bits. It changes the mapping default of ADR-0009.
 
 No new dependency. The font is `FONT_7X13_BOLD` from `embedded-graphics`,
 which is already a dependency.
@@ -95,6 +102,7 @@ which is already a dependency.
 - `gameclockd`: `run` presents at the compositor's brightness. `parse_args`
   and `main` select the base scene.
 - `deploy/gameclockd.service`: maybe `--led-pwm-bits=8`.
+- `rgbmatrix-sys`: the default GPIO mapping.
 - Docs: ADR-0014, ADR-0015, the ADR index, `architecture.md`, `glossary.md`,
   `roadmap.md`, `docs/hardware/pi-zero-w.md`, `CHANGELOG.md`, and the README
   status line.
