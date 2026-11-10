@@ -1,8 +1,9 @@
 //! `gameclockd`: the game clock daemon.
 //!
-//! For now it shows the diagnostic test pattern and waits to be stopped
-//! (`specs/daemon-lifecycle`). Behavior lives in the library; this file wires
-//! up arguments, signals, and the panel chosen at build time.
+//! Now it shows the diagnostic test pattern and waits for a stop signal
+//! (`openspec/specs/daemon-lifecycle`). The library has the behavior. This
+//! file connects the arguments, the signals, and the panel that the build
+//! selects.
 
 use std::process::ExitCode;
 
@@ -23,8 +24,8 @@ fn main() -> ExitCode {
         }
     };
 
-    // Register before the driver starts, so a stop during init isn't lost
-    // (docs/adr/0010).
+    // Register before the driver starts. Then a stop signal during
+    // initialization is not lost (docs/adr/0010).
     let mut signals = match Signals::new([SIGTERM, SIGINT]) {
         Ok(s) => s,
         Err(e) => {
@@ -41,12 +42,12 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
-        // Blocks in a read on signal-hook's self-pipe: no timer, no extra
+        // Blocks in a read on the signal-hook self-pipe. No timer, no extra
         // thread.
         run(&mut panel, || {
             let _ = signals.forever().next();
         })
-        // The panel drops here, before we report and exit; the hzeller
+        // The panel drops here, before the report and the exit. The hzeller
         // driver stops its refresh thread and blanks the LEDs.
     };
 
@@ -64,7 +65,7 @@ mod panel {
     }
 }
 
-/// No LED driver built in: log frames instead, so the daemon runs anywhere.
+/// No LED driver is built in. Log the frames, so the daemon runs anywhere.
 #[cfg(not(feature = "hzeller"))]
 mod panel {
     use core::convert::Infallible;
@@ -76,7 +77,7 @@ mod panel {
 
     #[allow(clippy::unnecessary_wraps)] // Same signature as the hzeller build.
     pub fn create(args: &[String]) -> Result<LogPanel, Infallible> {
-        eprintln!("gameclockd: no LED driver is built in; frames are only logged");
+        eprintln!("gameclockd: no LED driver is built in. Frames are only logged.");
         if !args.is_empty() {
             eprintln!("gameclockd: --led-* flags are ignored without the driver");
         }

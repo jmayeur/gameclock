@@ -29,11 +29,11 @@ impl Default for Brightness {
     }
 }
 
-/// Something that can display a [`Frame`]: the hzeller-driven LED matrix on the
-/// Pi, a desktop simulator, or a test double.
+/// A thing that can show a [`Frame`]: the LED matrix on the Pi (through
+/// hzeller), a desktop simulator, or a test double.
 ///
-/// Implementations only blit pixels. They hold no display logic, so swapping
-/// the driver never touches scenes (docs/adr/0005).
+/// Implementations only blit pixels. They have no rendering logic, so a new
+/// driver never changes scenes (docs/adr/0005).
 pub trait Panel {
     /// Driver-specific failure.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -44,7 +44,7 @@ pub trait Panel {
     /// Show `frame` at `brightness`. Called only when the frame changed.
     ///
     /// # Errors
-    /// Returns the driver's error if the frame could not be displayed.
+    /// Returns the driver's error if the panel cannot show the frame.
     fn present(&mut self, frame: &Frame, brightness: Brightness) -> Result<(), Self::Error>;
 }
 

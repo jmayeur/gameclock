@@ -1,4 +1,4 @@
-# Pinned for reproducible builds; bump deliberately (and note it in CHANGELOG).
+# Pinned for reproducible builds. Update it on purpose and note it in CHANGELOG.
 [toolchain]
 channel = "1.99.1"
 components = ["rustfmt", "clippy"]

@@ -1,8 +1,8 @@
 /*
- * Build-time check that led-matrix-c.h still has the struct layout our
- * hand-written Rust bindings mirror (docs/adr/0009). build.rs passes the
- * expected sizes and offsets as LAYOUT_* defines from one table; src/ffi.rs
- * asserts the Rust structs against the same table. A mismatch fails the build.
+ * Build-time check that led-matrix-c.h has the struct layout that our
+ * hand-written Rust bindings copy (docs/adr/0009). build.rs passes the
+ * expected sizes and offsets from one table as LAYOUT_* defines. src/ffi.rs
+ * checks the Rust structs against the same table. A mismatch stops the build.
  */
 #include <stddef.h>
 #include "led-matrix-c.h"

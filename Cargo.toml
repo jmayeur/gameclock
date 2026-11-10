@@ -12,7 +12,7 @@ license = "GPL-2.0-or-later"
 repository = "https://github.com/jmayeur/gameclock"
 publish = false
 
-# One place for dependency versions; member crates use `{ workspace = true }`.
+# One place for dependency versions. Member crates use `{ workspace = true }`.
 # Every dependency must satisfy deny.toml's GPL-2-compatible license policy.
 [workspace.dependencies]
 gameclock-core = { path = "crates/gameclock-core" }

@@ -1,8 +1,10 @@
-//! End-to-end tests of the host build of `gameclockd` (`specs/daemon-lifecycle`).
-//! They spawn the real binary, so they cover argument handling, signal
-//! registration, and exit codes that unit tests can't reach.
+//! End-to-end tests of the host build of `gameclockd`
+//! (`openspec/specs/daemon-lifecycle`). They start the real binary. So they
+//! test argument handling, signal registration, and exit codes, which unit
+//! tests cannot reach.
 //!
-//! Host build only: with the `hzeller` feature the binary needs the real panel.
+//! Host build only. With the `hzeller` feature, the binary needs the real
+//! panel.
 #![cfg(not(feature = "hzeller"))]
 
 use std::io::{BufRead, BufReader};
@@ -10,8 +12,8 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-/// Printed by the logging panel once the daemon has presented, by which point
-/// its signal handlers are registered.
+/// The logging panel prints this after the daemon presents. At that time, the
+/// signal handlers are registered.
 const READY: &str = "presented a 64×32 frame";
 
 /// A running daemon with its stderr collected line by line.
@@ -133,7 +135,8 @@ fn unknown_argument_is_a_usage_error() {
 fn host_build_announces_the_logging_panel() {
     let mut d = Daemon::spawn(&[]);
     d.wait_for(READY);
-    assert!(d.stderr_contains("no LED driver"), "stderr: {:?}", d.seen);
+    let notice = "gameclockd: no LED driver is built in. Frames are only logged.";
+    assert!(d.seen.iter().any(|l| l == notice), "stderr: {:?}", d.seen);
 }
 
 #[test]

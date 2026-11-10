@@ -1,5 +1,5 @@
-//! `gameclockd`'s behavior, kept out of `main` so it is testable without
-//! hardware or signals (`specs/daemon-lifecycle`).
+//! The behavior of `gameclockd`. It is not in `main`, so tests do not need
+//! hardware or signals (`openspec/specs/daemon-lifecycle`).
 
 use core::fmt;
 
@@ -15,7 +15,7 @@ pub enum RunError<E> {
 impl<E: fmt::Display> fmt::Display for RunError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Present(e) => write!(f, "showing a frame on the panel failed: {e}"),
+            Self::Present(e) => write!(f, "the panel did not show the frame: {e}"),
         }
     }
 }
@@ -40,7 +40,7 @@ pub fn run<P: Panel>(
     panel
         .present(&frame, Brightness::MAX)
         .map_err(RunError::Present)?;
-    // Nothing changes until we are told to stop: block, don't poll
+    // Nothing changes until a stop signal comes. Block. Do not poll
     // (docs/adr/0006).
     wait_for_shutdown();
     Ok(())
@@ -54,7 +54,7 @@ impl fmt::Display for UsageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "unrecognized argument '{}': gameclockd accepts only --led-* driver flags",
+            "unknown argument '{}'. gameclockd accepts only --led-* driver flags.",
             self.0
         )
     }
@@ -62,9 +62,9 @@ impl fmt::Display for UsageError {
 
 impl std::error::Error for UsageError {}
 
-/// Check the command line: only `--led-*` driver flags are accepted, and
-/// they are returned unchanged for the driver to parse
-/// (`specs/daemon-lifecycle`, docs/adr/0009).
+/// Check the command line. Only `--led-*` driver flags are accepted. The
+/// function returns them unchanged for the driver to parse
+/// (`openspec/specs/daemon-lifecycle`, docs/adr/0009).
 ///
 /// # Errors
 /// [`UsageError`] naming the first argument that isn't a `--led-*` flag.
@@ -83,8 +83,8 @@ where
         .collect()
 }
 
-/// A panel for builds without the LED driver: it only logs what it would
-/// show, so the daemon runs on any machine.
+/// A panel for builds without the LED driver. It only logs its presents, so
+/// the daemon runs on any machine.
 #[derive(Debug)]
 pub struct LogPanel {
     size: (usize, usize),
@@ -247,6 +247,19 @@ mod tests {
             "run must wait"
         );
         assert_eq!(panel.presents.len(), 1);
+    }
+
+    #[test]
+    fn messages_are_exact() {
+        let err = run(&mut Broken, || {}).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "the panel did not show the frame: the LEDs are on fire"
+        );
+        assert_eq!(
+            UsageError("--frobnicate".into()).to_string(),
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags."
+        );
     }
 
     #[test]

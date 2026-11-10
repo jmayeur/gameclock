@@ -7,9 +7,9 @@ all-features = true
 
 [licenses]
 # GPL-2.0-compatible licenses only. Notably absent:
-#  - Apache-2.0 (incompatible with GPL-2.0; "MIT OR Apache-2.0" passes via MIT)
+#  - Apache-2.0 (not compatible with GPL-2.0. "MIT OR Apache-2.0" passes as MIT)
 #  - GPL-3.0 / AGPL-3.0 / LGPL-3.0 (incompatible with GPL-2.0-only)
-#  - MPL-2.0 (only GPL-compatible with caveats; review case by case)
+#  - MPL-2.0 (GPL-compatible only with conditions. Review each case)
 allow = [
     "MIT",
     "MIT-0",

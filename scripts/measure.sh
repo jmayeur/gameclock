@@ -1,5 +1,5 @@
 #!/bin/sh
-# Measures one process the same way for every program (specs/pi-deployment,
+# Measures one process the same way for every program (openspec/specs/pi-deployment,
 # docs/adr/0006): CPU as a percentage of one core over a window, in total and
 # per thread, plus resident memory and voluntary context switches. Reads only
 # /proc, so it runs on the Pi as-is.

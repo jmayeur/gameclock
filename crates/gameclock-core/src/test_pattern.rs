@@ -1,9 +1,11 @@
-//! A diagnostic image for validating a panel's geometry and colors.
+//! A diagnostic image that checks a panel's geometry and colors.
 //!
-//! Corner markers show orientation and mirroring, the white border shows
-//! missing edge rows or columns, the color bars show channel order, and the
-//! gray ramp shows color depth. See `specs/test-pattern` in the
-//! `panel-bring-up` change.
+//! - Corner markers show orientation and mirroring.
+//! - The white border shows missing edge rows or columns.
+//! - The color bars show channel order.
+//! - The gray ramp shows color depth.
+//!
+//! The spec is `openspec/specs/test-pattern`.
 
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
@@ -26,8 +28,8 @@ const BARS: [Rgb888; 7] = [
 
 /// Draw the test pattern over the whole of `target`.
 ///
-/// The result depends only on the target's size. Any size works; features
-/// that don't fit are clipped.
+/// The result depends only on the target's size. Any size works. Features
+/// that do not fit are clipped.
 ///
 /// # Errors
 /// Returns the target's drawing error. Drawing into a [`crate::Frame`] never
@@ -90,7 +92,7 @@ where
     Ok(())
 }
 
-/// Fill a rectangle; empty or negative sizes draw nothing.
+/// Fill a rectangle. Empty or negative sizes draw nothing.
 fn fill<D>(target: &mut D, x: i32, y: i32, w: i32, h: i32, color: Rgb888) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = Rgb888>,

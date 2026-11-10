@@ -1,6 +1,6 @@
 #!/bin/sh
-# Tests scripts/measure.sh (specs/pi-deployment, "Performance is measured the
-# same way for every process"). Linux only; needs a C compiler for the
+# Tests scripts/measure.sh (openspec/specs/pi-deployment, "Performance is measured the
+# same way for every process"). Linux only. Needs a C compiler for the
 # two-thread fixture. Usage: scripts/test-measure.sh
 set -eu
 
