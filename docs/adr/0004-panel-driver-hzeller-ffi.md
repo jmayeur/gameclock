@@ -2,8 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-09
-- **Related:** ADR-0003, ADR-0005, ADR-0007. Implemented by the
-  `panel-bring-up` OpenSpec change.
+- **Related:** ADR-0003, ADR-0005, ADR-0007. Refined by ADR-0009. Implemented
+  by the `panel-bring-up` OpenSpec change.
 
 ## Context
 

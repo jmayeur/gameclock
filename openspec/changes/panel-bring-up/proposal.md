@@ -65,13 +65,13 @@ None. `openspec/specs/` is empty.
 
 ## New ADRs required
 
-- **ADR-0009: Driver crate layout, feature gating, and driver flags.**
+- **[ADR-0009](../../../docs/adr/0009-driver-crate-layout-and-flags.md): Driver crate layout, feature gating, and driver flags.**
   Refines ADR-0004: one crate (`rgbmatrix-sys`) holds both the raw bindings and
   the safe `HzellerPanel`, so `unsafe` stays in a single crate; the C++ build
   and link are opt-in via features; hzeller's `--led-*` flags are passed
   through instead of building our own driver config for now. Adds the `cc`
   build dependency.
-- **ADR-0010: Run as a root systemd service with signal-driven shutdown.**
+- **[ADR-0010](../../../docs/adr/0010-systemd-service-and-signals.md): Run as a root systemd service with signal-driven shutdown.**
   Deployment assumptions (root start, hzeller's privilege drop, coexistence with
   the legacy service via `Conflicts=`, deploy over SSH with the host supplied
   out of the repo) and the `signal-hook` dependency for blocking, thread-free
