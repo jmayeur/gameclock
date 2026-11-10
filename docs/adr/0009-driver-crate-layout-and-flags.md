@@ -75,8 +75,14 @@ Facts about the pinned upstream (`hzeller/rpi-rgb-led-matrix`
 - `cargo fmt/clippy/test/check` work everywhere with no C++ toolchain and no
   submodule checkout. Only the Pi build needs `zig`, `cargo-zigbuild`, and
   `git submodule update --init`.
-- Host clippy doesn't see the `link`-gated code. CI lints it with a
-  Pi-target clippy run under `cargo zigbuild`.
+- Host clippy doesn't see the `link`-gated code. `scripts/clippy-pi.sh`
+  lints it for the Pi target with `cargo-zigbuild clippy` (the subcommand is
+  only reachable as `cargo-zigbuild clippy`, not `cargo zigbuild clippy`), and
+  `clippy::undocumented_unsafe_blocks` is denied in this crate.
+- The layout check covers `struct Color` and `struct RGBLedMatrixOptions`, the
+  structs we pass. `RGBLedRuntimeOptions` isn't bound: we create the matrix
+  with `led_matrix_create_from_options`, which uses hzeller's runtime
+  defaults plus any `--led-*` runtime flags.
 - Bumping the submodule means re-reading `led-matrix-c.h` and
   `lib/Makefile`. The layout check catches struct drift, not new or renamed
   functions; those fail at link time.

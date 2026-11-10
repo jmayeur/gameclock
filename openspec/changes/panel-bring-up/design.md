@@ -53,8 +53,9 @@ crates, which would put `unsafe` calls in two crates) are in **ADR-0009**.
 So `cargo clippy --all-targets`, `cargo test`, and the existing
 `cargo check --target arm-unknown-linux-gnueabihf` never run a C++ compiler.
 Keying off the target instead would make that ARMv6 type-check need a C++
-cross-compiler on CI. The link-gated code is linted by the CI Pi job
-(`cargo zigbuild clippy --features hzeller` for the Pi target). See ADR-0009.
+cross-compiler on CI. The link-gated code is linted by `scripts/clippy-pi.sh`
+(`cargo-zigbuild clippy` for the Pi target) locally and in the CI Pi job. See
+ADR-0009.
 
 ### D3. Building hzeller with `cc` under zig
 
@@ -62,17 +63,19 @@ cross-compiler on CI. The link-gated code is linted by the CI Pi job
 
 - Fails early with "run `git submodule update --init`" if
   `vendor/rpi-rgb-led-matrix/lib/led-matrix-c.cc` is missing.
-- Compiles `lib/*.cc` (C++) and `lib/*.c` (C) as two `cc::Build`s, mirroring
-  the defines and flags in the pinned `lib/Makefile` (`-O3`,
-  `-fno-strict-aliasing`, `-D_FILE_OFFSET_BITS=64`, plus its default
-  `DEFINES`), and adds `-mcpu=arm1176jzf_s` when the target is
-  `arm-unknown-linux-gnueabihf`.
+- Compiles the sources in the pinned `lib/Makefile`'s `OBJECTS` (including
+  the RP1 backend) as two `cc::Build`s, C++ then C, with the Makefile's
+  `-O3`, `-fno-exceptions -std=c++11`, `DEFAULT_HARDWARE`, and RP1 include
+  paths, and adds `-mcpu=arm1176jzf_s` when the target is
+  `arm-unknown-linux-gnueabihf`. Upstream's compiler warnings are silenced.
 - Compiles a small `layout_check.c` that `_Static_assert`s
-  `sizeof`/`offsetof` of `RGBLedMatrixOptions`, `RGBLedRuntimeOptions`, and
-  `Color` against constants that Rust also asserts with `const` checks on the
-  mirrored structs. A header change that breaks our bindings then fails the
-  build instead of corrupting memory.
-- Links `stdc++` (zig provides libc++ statically), `pthread`, `rt`, `m`.
+  `sizeof`/`offsetof` of `RGBLedMatrixOptions` and `Color` against one table
+  in `build.rs`, which also generates the constants that Rust asserts with
+  `const` checks on the mirrored structs. A header change that breaks our
+  bindings then fails the build instead of corrupting memory.
+  (`RGBLedRuntimeOptions` isn't bound; see D5.)
+- Links the C++ standard library (cc's default; zig substitutes its static
+  libc++), `pthread`, `rt`, `m`.
 - Emits `rerun-if-changed` for `lib/`, `include/`, and `layout_check.c`.
 
 `cargo-zigbuild` sets `CC`/`CXX` for the target, so `cc` uses zig with glibc
@@ -86,15 +89,15 @@ cross-compiler on CI. The link-gated code is linted by the CI Pi job
 
 1. Checks dimensions (`Error::DimensionMismatch { frame, panel }`), before
    touching the driver.
-2. `convert::prepare(frame, brightness, &mut buf) -> Option<u8>` fills the
-   buffer and returns the driver brightness (`None` for 0: buffer is all black,
-   driver brightness left unchanged).
+2. `convert::prepare(frame, panel_size, brightness, &mut buf) ->
+   Result<Option<u8>, Error>` does the dimension check from step 1, fills the
+   buffer, and returns the driver brightness (`None` for 0: buffer is all
+   black, driver brightness left unchanged).
 3. `led_matrix_set_brightness` (hzeller scales pixels as they are set, so this
    comes first), then `led_canvas_set_pixels(canvas, 0, 0, w, h, buf)` (one
    call, not 2048), then `led_matrix_swap_on_vsync`, keeping the returned
-   canvas as the next offscreen. If the pinned header lacks
-   `led_canvas_set_pixels`, fall back to `led_canvas_set_pixel` per pixel and
-   note it in ADR-0009.
+   canvas as the next offscreen. (The pinned header has
+   `led_canvas_set_pixels`.)
 
 `Drop` calls `led_matrix_delete`, which stops the refresh thread and clears
 the panel.
@@ -103,11 +106,12 @@ the panel.
 
 `options::DEFAULTS` holds 64 cols, 32 rows, chain 1, parallel 1, mapping
 `adafruit-hat`, as a `'static` Rust value (the mapping is a `&'static CStr`).
-`HzellerPanel::new(args)` fills `RGBLedMatrixOptions` and `RGBLedRuntimeOptions`
-from it, then calls the C API constructor that parses `--led-*` flags from
-`argc/argv` into those structs (`led_matrix_create_from_options_and_rt_options`
-after hzeller's flag parse, or `led_matrix_create_from_options` with mutable
-argv, whichever the pinned header offers). Flags therefore override defaults
+`HzellerPanel::new(args)` fills `RGBLedMatrixOptions` from it, then calls
+`led_matrix_create_from_options` with a mutable `argc/argv`. hzeller parses
+the `--led-*` flags (matrix and runtime ones) over those values and removes
+the flags it consumed; leftovers become `Error::UnknownArgs`. hzeller keeps
+pointers into the argument strings, so the panel owns them for its lifetime.
+Flags therefore override defaults
 using hzeller's own parser, with its validation and `--led-*` names. A NULL
 return becomes `Error::Init`. Rationale (no config format until we know which
 knobs matter) in ADR-0009. `daemon` stays 0; `drop_privileges` stays hzeller's
@@ -195,8 +199,8 @@ in `openspec/changes/panel-bring-up/measurements.md`.
 - [Statically linked libc++/compiler-rt are Apache-2.0 WITH LLVM-exception] →
   the LLVM exception exists for GPLv2 combination; ADR-0009 records it.
   `cargo deny` doesn't see C/C++ code, so the ADR is the record.
-- [`cargo zigbuild clippy` can't lint the `link` code in CI] → fall back to
-  `cargo zigbuild check` plus clippy on the device-free code, and note it.
+- [Host clippy can't see the `link` code] → `scripts/clippy-pi.sh`
+  (`cargo-zigbuild clippy`) lints it for the Pi target.
 - [The refresh thread dominates process CPU, hiding app cost] → per-thread
   reporting (D9).
 - [The daemon always presents at 100% brightness] → acceptable for a bring-up

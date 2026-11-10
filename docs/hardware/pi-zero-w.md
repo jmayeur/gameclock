@@ -26,6 +26,13 @@ code implies. They drive the driver defaults (ADR-0004) and the build target
 | Hardware pulse | `notes.md` used `--led-no-hardware-pulse`. With audio off, hardware pulse may work and would improve image quality. Test at bring-up. |
 | PWM solder mod (GPIO4↔18) | Unknown; the legacy hints suggest not. That would mean the `adafruit-hat` mapping rather than `adafruit-hat-pwm`. |
 
+## Driver used by gameclockd
+
+hzeller `rpi-rgb-led-matrix` is vendored as a submodule at
+`vendor/rpi-rgb-led-matrix`, pinned to
+`3da7a3bdfca4637bb79ff038bc2bb26965197db5` (2026-10-24). It is statically
+linked into the binary, so the Pi's own 2023 copy is not used (ADR-0009).
+
 ## Software currently on the device
 
 - hzeller `rpi-rgb-led-matrix` at `a3eea99` (2023-05-29), installed in place

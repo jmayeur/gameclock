@@ -80,6 +80,7 @@ name = "gameclockd"
 version = "0.1.0"
 dependencies = [
  "gameclock-core",
+ "rgbmatrix-sys",
 ]
 
 [[package]]

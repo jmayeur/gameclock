@@ -8,8 +8,14 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# docs/adr/0009: `hzeller` builds the C++ LED driver in and drives the real
+# panel. Only the Pi release build (scripts/build-pi.sh) enables it.
+[features]
+hzeller = ["dep:rgbmatrix-sys", "rgbmatrix-sys/link"]
+
 [dependencies]
 gameclock-core.workspace = true
+rgbmatrix-sys = { workspace = true, optional = true }
 
 [lints]
 workspace = true

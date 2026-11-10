@@ -24,8 +24,7 @@
 |---|---|---|
 | `gameclock-core` | **Exists** | Pure logic. `Frame` (a row-major RGB buffer that implements `embedded-graphics`' `DrawTarget`), the `Panel` trait, `Brightness`, and the diagnostic `test_pattern`. No hardware, I/O, threads, or wall clock (ADR-0005). |
 | `gameclockd` | **Exists (stub)** | The daemon. Will own the event loop, time source, config, command input, and panel selection. |
-| `rgbmatrix-sys` | **Planned** | Hand-written FFI to hzeller's C API, plus a `build.rs` that compiles the vendored, pinned submodule (ADR-0004). The only crate allowed `unsafe`. |
-| hzeller `Panel` | **Planned** | A safe wrapper that implements `Panel` by copying a `Frame` into an offscreen canvas and swapping on vsync. |
+| `rgbmatrix-sys` | **Exists** | The LED driver, and the only crate allowed `unsafe` (ADR-0004, ADR-0009). Always: Pi driver defaults (`options`), frame-to-driver-buffer conversion (`convert`), and `Error`, all host-tested. With the `link` feature: `build.rs` compiles the vendored hzeller submodule (`vendor/rpi-rgb-led-matrix`) with zig, hand-written FFI (`ffi`) with a build-time struct-layout check, and `HzellerPanel`, which implements `Panel`. |
 | simulator `Panel` | **Planned** | Shows frames on a dev machine (terminal truecolor and/or a window). |
 
 ## Key types (current)
@@ -36,6 +35,11 @@
 - **`Panel`**: `dimensions()` and `present(&Frame, Brightness)`. Implementations
   only blit pixels.
 - **`Brightness`**: a percentage clamped to 0–100.
+- **`HzellerPanel`** (`rgbmatrix-sys`, `link` only): created from `--led-*`
+  flags over the Pi defaults. `present` checks the frame's size, converts it
+  into a preallocated buffer, sets the driver brightness, copies the buffer to
+  an offscreen canvas in one call, and swaps it in on vsync. Dropping it stops
+  hzeller's refresh thread and blanks the panel.
 - **`test_pattern::render`**: draws the diagnostic test pattern into any
   `Rgb888` `DrawTarget` (normally a `Frame`). Depends only on the target's size.
 
