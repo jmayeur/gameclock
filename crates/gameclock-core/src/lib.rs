@@ -12,6 +12,7 @@
 
 pub mod frame;
 pub mod panel;
+pub mod scene;
 pub mod test_pattern;
 
 /// Re-exported, so that other crates draw with the same version.

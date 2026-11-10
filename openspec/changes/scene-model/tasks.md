@@ -8,10 +8,10 @@
 
 ## 2. Scene contract and compositor (`scene-model`)
 
-- [ ] 2.1 Red: write compositor tests with test scenes: solid color, one pixel, timed finish, timed color change, and fixed next change. They cover "The top scene is visible" and "Each render starts from a black frame". They also cover "Finished foreground scenes go away" and "The base scene always stays". Run `cargo test -p gameclock-core` and see them fail because `Scene` and `Compositor` do not exist.
-- [ ] 2.2 Green: add the `Scene` trait and `Compositor::{new, push, update}` (design D1, D2). Verify that the 2.1 tests pass.
-- [ ] 2.3 Red: write tests for "Only a changed frame is presented" and "The deadline is the top scene's next change". Also write tests for "A scene's finish time is a change" and "Renders are at most 30 per second". See them fail for the expected reason.
-- [ ] 2.4 Green: add the comparison with `shown`, the first-update flag, and `Compositor::deadline` with the 33 ms cap (D2, D3). Verify that all compositor tests pass.
+- [x] 2.1 Red: write compositor tests with test scenes: solid color, one pixel, timed finish, timed color change, and fixed next change. They cover "The top scene is visible" and "Each render starts from a black frame". They also cover "Finished foreground scenes go away" and "The base scene always stays". Run `cargo test -p gameclock-core` and see them fail because `Scene` and `Compositor` do not exist.
+- [x] 2.2 Green: add the `Scene` trait and `Compositor::{new, push, update}` (design D1, D2). Verify that the 2.1 tests pass.
+- [x] 2.3 Red: write tests for "Only a changed frame is presented" and "The deadline is the top scene's next change". Also write tests for "A scene's finish time is a change" and "Renders are at most 30 per second". See them fail for the expected reason.
+- [x] 2.4 Green: add the comparison with `shown`, the first-update flag, and `Compositor::deadline` with the 33 ms cap (D2, D3). Verify that all compositor tests pass.
 
 ## 3. Heartbeat scene (`heartbeat-scene`)
 
