@@ -54,7 +54,7 @@
 ## 8. Docs and final verification
 
 - [x] 8.1 Update `docs/design/architecture.md` (clock, schedule, brightness flow, base scene selection). Update `glossary.md` (schedule, rule, style, bedtime night, test-pattern mode), `roadmap.md` (mark `clock-scene` done). Update `docs/hardware/pi-zero-w.md` (the mapping, the GPIO4↔18 link, the glitch finding, and PWM bits), the README status line, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
-- [ ] 8.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
+- [x] 8.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
 - [ ] 8.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
 ## Workflow follow-up
