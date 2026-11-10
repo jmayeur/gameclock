@@ -15,9 +15,10 @@ and scope can change. Update this file when a change merges or a plan changes.
 2. **`dev-simulator`**: **done**. `TerminalPanel` draws frames in the terminal
    (`cargo sim`), so you can see scenes without the Pi. A window and PNG
    snapshots are not planned.
-3. **`scene-model`**: the scene contract (render, next-change deadline,
-   finished), the compositor, and the event-driven loop (ADR-0006). The daemon
-   injects time. `jiff` handles the timezone.
+3. **`scene-model`**: **done**. The `Scene` contract, the `Compositor`, and
+   the event-driven loop (ADR-0012, ADR-0013). The daemon injects a `jiff`
+   time in the system time zone. The `Heartbeat` scene is the base scene
+   until the clock scene replaces it.
 4. **`clock-scene`**: the clock face. The time-of-day color and brightness
    schedule is data, not hardcoded hours. The legacy rules are the defaults.
    Consider `--led-pwm-bits=8` (measured at bring-up).
