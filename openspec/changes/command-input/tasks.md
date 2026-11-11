@@ -37,12 +37,12 @@
 
 ## 7. On-device verification and measurements
 
-- [ ] 7.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/command-input/measurements.md`.
-- [ ] 7.2 Deploy to the Pi with `scripts/deploy.sh`. Run "Socket on the Pi" and "Commands from root only".
-- [ ] 7.3 Run "Clock daemon wakes only each minute": wait 10 s, then run `scripts/measure.sh` for 60 s. Record per-thread CPU %, voluntary context switches, RSS, and the refresh rate. Compare them with the `clock-scene` numbers.
+- [x] 7.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/command-input/measurements.md`.
+- [x] 7.2 Deploy to the Pi with `scripts/deploy.sh`. Run "Socket on the Pi" and "Commands from root only".
+- [x] 7.3 Run "Clock daemon wakes only each minute": wait 10 s, then run `scripts/measure.sh` for 60 s. Record per-thread CPU %, voluntary context switches, RSS, and the refresh rate. Compare them with the `clock-scene` numbers.
 - [ ] 7.4 Time 20 `sudo gameclockd ctl status` commands. Record the median and the slowest. Each must be less than 100 ms, not counting `sudo`.
-- [ ] 7.5 Send `test-pattern`, then `clock`. Ask the user to look at the panel and verify that it changes each time. Then stop the service and run "Directory goes away at stop".
-- [ ] 7.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
+- [x] 7.5 Send `test-pattern`, then `clock`. Ask the user to look at the panel and verify that it changes each time. Then stop the service and run "Directory goes away at stop".
+- [x] 7.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 8. Docs and final verification
 
