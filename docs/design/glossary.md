@@ -57,5 +57,15 @@
   timing. Better image quality, but it conflicts with onboard audio (disabled on
   this Pi). The `adafruit-hat-pwm` mapping uses it through the GPIO4–18 link on
   the HAT.
+- **Control socket**: the Unix stream socket of `gameclockd`, by default
+  `/run/gameclockd/control.sock`, for root only (ADR-0016).
+- **Command**: one line on the control socket: `clock`, `test-pattern`, or
+  `status`. One connection carries one command.
+- **Reply**: the one line that the daemon sends back. It starts with `ok` or
+  with `error: `.
+- **`ctl`**: the client in the same binary. `sudo gameclockd ctl status`
+  sends one command and writes the reply.
+- **Event channel**: the channel that the loop waits on. The signal thread
+  and the control thread send events to it (ADR-0016).
 - **Semaphore file**: the legacy command channel (`msg.txt` holding
   `msg=<value>`).

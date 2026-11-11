@@ -1,6 +1,6 @@
 # Architecture
 
-> The state after `clock-scene`. Sections marked **Planned** give the agreed
+> The state after `command-input`. Sections marked **Planned** give the agreed
 > direction (ADRs 0004–0006). They become current as OpenSpec changes merge.
 
 ## Shape
@@ -8,11 +8,13 @@
 ```
                 ┌──────────────── gameclockd (binary, on the Pi) ────────────────┐
   wall clock ──▶│                                                                │
-  (tz-aware)    │   event loop: sleep until next visual change or input          │
-                │        │                                                       │
-  commands  ───▶│        ▼                                                       │
-  (transport    │   gameclock-core (pure) ──renders──▶ Frame ──changed?──▶ Panel ──┼──▶ LED matrix
-   TBD)         │   scenes · schedule ·                (64×32 RGB)          .present│
+  (tz-aware)    │   event loop: sleep until next visual change or event          │
+                │        │                ▲ event channel                        │
+  commands  ───▶│ control thread ─────────┤                                      │
+  (Unix socket) │ signals thread ─────────┘                                      │
+  signals   ───▶│        ▼                                                       │
+                │   gameclock-core (pure) ──renders──▶ Frame ──changed?──▶ Panel ──┼──▶ LED matrix
+                │   scenes · schedule ·                (64×32 RGB)          .present│
                 │   composition                                                  │
                 └────────────────────────────────────────────────────────────────┘
 ```
@@ -27,7 +29,8 @@
   (ADR-0013).
 - **`gameclockd`** (exists): the daemon. It checks arguments, handles signals,
   reads the time zone, selects the panel by build feature, and runs the event
-  loop below. Planned: config and command input.
+  loop below. It also runs the control socket and the `ctl` client
+  (ADR-0016). Planned: config.
 - **`rgbmatrix-sys`** (exists): the LED driver, and the only crate with
   `unsafe` (ADR-0004, ADR-0009).
   - Always: the Pi driver defaults (`options`: 64×32, chain 1, parallel 1,
@@ -89,25 +92,45 @@
 - **`Heartbeat`**: the base scene in the test-pattern mode. It is the test
   pattern with one white pixel on row 1. The pixel moves one column each
   second. It uses full brightness.
-- **`Clock`, `Wait`** (`gameclockd`, ADR-0013): the injected time source and
-  the deadline wait. `SystemClock` gives the system time in the time zone
-  from startup. `SignalWait` reads the signal pipe with a timeout until the
-  deadline. Tests use a fake clock and a scripted wait.
+- **`Clock`, `Wait`** (`gameclockd`, ADR-0013, ADR-0016): the injected time
+  source and the wait. `SystemClock` gives the system time in the time zone
+  from startup. `ChannelWait` waits on the event channel with a timeout until
+  the deadline. It gives `Deadline`, `Shutdown`, or `Command`. Tests use a
+  fake clock and a scripted wait.
+- **`Event`, `Request`** (`gameclockd`, ADR-0016): an event on the channel is
+  a shutdown or a command request. A request holds a `Command` and the sender
+  for its reply line.
+- **`command`** (`gameclockd`): `parse_command` turns a line into a
+  `Command` (`clock`, `test-pattern`, or `status`) or a `CommandError`. The
+  reply text comes from pure functions.
+- **`control`** (`gameclockd`): `listen` makes the socket (mode 0600, a
+  stale file is replaced, a live socket is not taken). The `control` thread
+  accepts one connection at a time. It gives each client 1 s for its line and
+  the loop 2 s for the reply. `send_command` is the client of
+  `gameclockd ctl`.
 
 ## Daemon lifecycle
 
 `gameclockd` (ADR-0009, ADR-0010):
 
-1. **Arguments.** `parse_args` accepts hzeller `--led-*` flags and
-   `--test-pattern`. It gives the mode and the driver flags in their order.
-   Any other argument exits 2 before the daemon touches the panel.
-2. **Signals and time.** The daemon registers SIGTERM and SIGINT with
-   `signal-hook` before the driver starts. Each signal writes a byte to a
-   `UnixStream` pair (ADR-0013). Then the daemon reads the system time zone
-   once and names it on stderr. If no time zone is available, it uses UTC
-   and writes a warning. It also names the base scene: the clock, or the
-   test pattern with `--test-pattern`.
-3. **Panel, selected at build time.** There are three builds:
+1. **Arguments.** `parse_args` gives an `Invocation`. If the first argument
+   is `ctl`, the binary is the client. It sends one command, writes the
+   reply, and exits: 0 for `ok`, 1 for an error, and 2 for a usage error.
+   Otherwise it accepts hzeller `--led-*` flags, `--test-pattern`, and
+   `--control-socket=<path>`. It gives the mode, the socket path, and the
+   driver flags in their order. Any other argument exits 2 before the daemon
+   touches the panel.
+2. **Signals and time.** The daemon registers SIGTERM and SIGINT with the
+   `signal-hook` iterator before the driver starts. The `signals` thread
+   sends one shutdown event on the event channel (ADR-0016). Then the daemon
+   reads the system time zone once and names it on stderr. If no time zone
+   is available, it uses UTC and writes a warning. It also names the base
+   scene: the clock, or the test pattern with `--test-pattern`.
+3. **Control socket.** While the process is still root, the daemon listens on
+   the socket (default `/run/gameclockd/control.sock`) and starts the
+   `control` thread. If it cannot, it writes a warning and runs with no
+   command input.
+4. **Panel, selected at build time.** There are three builds:
    - `hzeller` (the Pi build, `scripts/build-pi.sh`): `HzellerPanel::new`
      receives the flags.
    - `simulator` (`cargo sim`): `TerminalPanel` draws on stdout.
@@ -115,28 +138,33 @@
 
    Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
    build with `hzeller` and `simulator` together stops with a compile error.
-4. **Run.** `run` puts the base scene in a panel-sized `Compositor`. Then it
+5. **Run.** `run` puts the base scene in a panel-sized `Compositor`. Then it
    loops:
    1. It gets the time from the clock and updates the compositor.
    2. If the update gives a frame, it presents the frame at the brightness
       that the update gives.
-   3. It waits until the compositor's deadline or a stop signal. With no
-      deadline, the wait has no timeout. The wait is a blocked read with no
-      extra thread.
-5. **Shutdown.** On a signal, the panel drops and the process exits 0. hzeller
-   stops its refresh thread and blanks the LEDs. A panel error exits 1 with
-   the message on stderr.
+   3. It waits until the compositor's deadline or an event. With no
+      deadline, the wait has no timeout.
+   4. For a command, it does the command and sends the reply. `clock` and
+      `test-pattern` replace the base scene and present it before the reply.
+      `status` gives the mode, the zone name, and the last brightness.
+6. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
+   file, and the process exits 0. hzeller stops its refresh thread and
+   blanks the LEDs. A panel error exits 1 with the message on stderr.
 
 On the Pi, the daemon runs as the `gameclockd` systemd service
 (`deploy/gameclockd.service`, installed by `scripts/deploy.sh`). The service
 conflicts with the legacy `clock.svc.service` (ADR-0010). It starts the
 daemon with `--led-pwm-bits=8`, before the flags from
-`/etc/default/gameclockd` (ADR-0015).
+`/etc/default/gameclockd` (ADR-0015). systemd makes `/run/gameclockd`, root
+only, for the socket and removes it at stop (ADR-0016). On the Pi, the
+driver drops root privileges after the socket exists, so the daemon cannot
+remove the socket file. The removal of the directory does that.
 
 ## Data flow
 
-1. The loop wakes at a deadline (the next visual change) or on a stop signal.
-   Planned: also on input.
+1. The loop wakes at a deadline (the next visual change), on a command, or
+   on a stop signal.
 2. It gives the injected time to the compositor. The compositor renders the
    top scene into a `Frame`.
 3. If the frame or the brightness is different from the last presented

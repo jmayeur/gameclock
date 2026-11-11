@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Command input (OpenSpec `command-input`, ADR-0016):
+  - `gameclockd`: a root-only control socket (`/run/gameclockd/control.sock`,
+    `--control-socket=<path>`) with one command line for each connection.
+    The commands are `clock`, `test-pattern`, and `status`.
+  - `gameclockd ctl <command>`: the client in the same binary.
+  - `gameclock-core`: `Compositor::set_base` and `last_brightness`.
 - Clock scene (OpenSpec `clock-scene`, ADR-0014, ADR-0015):
   - `gameclock-core`: the `Clock` scene (`09:05PM` in a 7×13 bold font) and
     the time-of-day `Schedule` as data, with the legacy table as the default.
@@ -44,6 +50,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Changed
 
+- The loop waits on an event channel. A signal thread and a control thread
+  send events to it. This replaces the signal-pipe read (ADR-0016).
+- The service unit makes `/run/gameclockd` for the socket.
 - `gameclockd` shows the clock, not the heartbeat. It presents once each
   minute (OpenSpec `clock-scene`).
 - The built-in GPIO mapping is `adafruit-hat-pwm`, not `adafruit-hat`. The

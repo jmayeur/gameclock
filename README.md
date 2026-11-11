@@ -5,8 +5,9 @@ drives the matrix through an Adafruit RGB Matrix HAT. The code is Rust, tuned
 for one ARMv6 core.
 
 > **Status:** the daemon drives the real panel. It shows the clock, with the
-> legacy colors and brightness for each time of day. Messages and alerts come
-> next, one at a time, through
+> legacy colors and brightness for each time of day. `sudo gameclockd ctl
+> status` talks to the running daemon. Messages and alerts come next, one at
+> a time, through
 > [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
 
