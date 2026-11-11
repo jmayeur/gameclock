@@ -42,11 +42,10 @@ arrives.
 ### Requirement: Command-line arguments
 The daemon SHALL accept hzeller `--led-*` flags, `--test-pattern`, and
 `--control-socket=<path>` as arguments. It SHALL give the `--led-*` flags to
-the driver in their order, without the other arguments. If the first argument
-is `ctl`, the binary SHALL run the client of `command-input` and SHALL NOT
-start the daemon. Any other argument SHALL cause a usage error and exit
-status 2, before the daemon touches the panel. A build without the hzeller
-driver SHALL accept and ignore `--led-*` flags, with a notice.
+the driver in their order, without the other arguments. Any other argument
+SHALL cause a usage error and exit status 2, before the daemon touches the
+panel. A build without the hzeller driver SHALL accept and ignore `--led-*`
+flags, with a notice.
 
 #### Scenario: Unknown argument is a usage error
 - **WHEN** `gameclockd` is started with `--frobnicate`
@@ -77,3 +76,14 @@ driver SHALL accept and ignore `--led-*` flags, with a notice.
 #### Scenario: Empty socket path is a usage error
 - **WHEN** `gameclockd` is started with `--control-socket=`
 - **THEN** it exits with status 2, and standard error names `--control-socket`
+
+## ADDED Requirements
+
+### Requirement: The first argument ctl selects the client
+If the first argument is `ctl`, the binary SHALL run the client of
+`command-input` with the other arguments. It SHALL NOT start the daemon.
+
+#### Scenario: ctl with a command
+- **WHEN** the arguments are `ctl` and `status`
+- **THEN** the binary runs the client with the command `status` and the default socket path
+- **AND** it does not start the daemon

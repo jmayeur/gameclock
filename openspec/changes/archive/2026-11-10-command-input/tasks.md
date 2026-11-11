@@ -48,7 +48,7 @@
 
 - [x] 8.1 Update `docs/design/architecture.md` (the event channel, the threads, the socket, the commands, and the startup order). Update `glossary.md` (control socket, command, reply, `ctl`), `roadmap.md` (mark `command-input` done), the README, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
 - [x] 8.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
-- [ ] 8.3 Push the branch, open the PR, and verify that all CI jobs pass.
+- [x] 8.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
 ## Workflow follow-up
 

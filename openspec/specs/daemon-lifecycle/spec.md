@@ -31,9 +31,10 @@ the base scene is the heartbeat scene.
 - **THEN** standard error has a line that says the base scene is the clock
 
 ### Requirement: The daemon blocks between deadlines
-Between renders, the daemon SHALL block until the compositor's deadline or a
-shutdown signal. It SHALL NOT wake at other times. With no deadline, it SHALL
-block with no timeout until a shutdown signal arrives.
+Between renders, the daemon SHALL block until the compositor's deadline, a
+command, or a shutdown signal. It SHALL NOT wake at other times. With no
+deadline, it SHALL block with no timeout until a command or a shutdown signal
+arrives.
 
 #### Scenario: Wait ends at the scene deadline
 - **WHEN** the daemon starts with the heartbeat scene at 1970-01-01T00:00:00.250Z
@@ -48,6 +49,10 @@ block with no timeout until a shutdown signal arrives.
 - **WHEN** the daemon runs with a static base scene, and the shutdown request comes 500 ms after the first present
 - **THEN** the panel recorded exactly one present when the daemon returns
 
+#### Scenario: A command ends the wait
+- **WHEN** the daemon runs with a static base scene and waits with no deadline, and a `status` command arrives
+- **THEN** the daemon replies to the command and waits again with no deadline
+
 #### Scenario: Heartbeat daemon wakes only each second (on-device)
 - **WHEN** `gameclockd --test-pattern` shows the heartbeat for at least 10 s, and we then measure it for 60 s
 - **THEN** the main thread's count of voluntary context switches increases by at least 55 and at most 180
@@ -57,6 +62,7 @@ block with no timeout until a shutdown signal arrives.
 - **WHEN** `gameclockd` shows the clock for at least 10 s, and we then measure it for 60 s
 - **THEN** the main thread's count of voluntary context switches increases by at most 10
 - **AND** the main thread uses less than 1% of one core
+- **AND** each other thread of `gameclockd`, except the driver's refresh thread, uses less than 1% of one core
 
 ### Requirement: The loop renders at each deadline
 When a wait ends at its deadline, the daemon SHALL update the compositor with
@@ -132,12 +138,13 @@ both the hzeller driver and the simulator SHALL fail.
 - **WHEN** `gameclockd` is built with both the hzeller and simulator features
 - **THEN** the build fails with a message that says the two features cannot be used together
 
-### Requirement: Command-line arguments are driver flags and the test-pattern mode
-The daemon SHALL accept hzeller `--led-*` flags and `--test-pattern` as
-arguments. It SHALL give the `--led-*` flags to the driver in their order,
-without `--test-pattern`. Any other argument SHALL cause a usage error and
-exit status 2, before the daemon touches the panel. A build without the
-hzeller driver SHALL accept and ignore `--led-*` flags, with a notice.
+### Requirement: Command-line arguments
+The daemon SHALL accept hzeller `--led-*` flags, `--test-pattern`, and
+`--control-socket=<path>` as arguments. It SHALL give the `--led-*` flags to
+the driver in their order, without the other arguments. Any other argument
+SHALL cause a usage error and exit status 2, before the daemon touches the
+panel. A build without the hzeller driver SHALL accept and ignore `--led-*`
+flags, with a notice.
 
 #### Scenario: Unknown argument is a usage error
 - **WHEN** `gameclockd` is started with `--frobnicate`
@@ -156,6 +163,19 @@ hzeller driver SHALL accept and ignore `--led-*` flags, with a notice.
 - **WHEN** the host build of `gameclockd` starts with `--test-pattern`
 - **THEN** standard error has a line that says the base scene is the test pattern
 
+#### Scenario: Socket path is not a driver flag
+- **WHEN** the arguments are `--control-socket=/tmp/a.sock` and `--led-pwm-bits=8`
+- **THEN** the socket path is `/tmp/a.sock`
+- **AND** the driver flags are `--led-pwm-bits=8` only
+
+#### Scenario: Default socket path
+- **WHEN** the arguments have no `--control-socket`
+- **THEN** the socket path is `/run/gameclockd/control.sock`
+
+#### Scenario: Empty socket path is a usage error
+- **WHEN** `gameclockd` is started with `--control-socket=`
+- **THEN** it exits with status 2, and standard error names `--control-socket`
+
 ### Requirement: The daemon presents at the scene's brightness
 Each present SHALL use the brightness that the compositor gives with the
 frame. A change of brightness alone SHALL cause a present.
@@ -169,3 +189,12 @@ frame. A change of brightness alone SHALL cause a present.
 - **AND** its first wait ends at its deadline
 - **THEN** the panel recorded two presents with the same frame
 - **AND** their brightness values are 25 and 60 in that order
+
+### Requirement: The first argument ctl selects the client
+If the first argument is `ctl`, the binary SHALL run the client of
+`command-input` with the other arguments. It SHALL NOT start the daemon.
+
+#### Scenario: ctl with a command
+- **WHEN** the arguments are `ctl` and `status`
+- **THEN** the binary runs the client with the command `status` and the default socket path
+- **AND** it does not start the daemon
