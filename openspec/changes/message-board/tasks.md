@@ -11,14 +11,14 @@
 
 ## 3. Message, scroll, and queue (`message-board`)
 
-- [ ] 3.1 Red: write `Message::new` tests: the defaults, the 1 to 64 character limit (counted in characters), and the 1 to 10 pass limit. Also write "Spaces in the text stay". See them fail because the `message` module does not exist.
-- [ ] 3.2 Green: add `Message`, `MessageError`, and the default constants (D2). Verify that the 3.1 tests pass.
-- [ ] 3.3 Red: write `Scroll` tests with a reference drawing for "Text enters at the right edge" and "Position comes from the time". Also write "The next pass starts at the right edge". Also write "Character that the font does not have", "Finish after the passes", and "Next change is the next step". Also write "Message at night" and "Message in the morning". See them fail.
-- [ ] 3.4 Green: add `Scroll` with `STEP = 40 ms` and the position from the time (D1). Verify that the 3.3 tests pass.
-- [ ] 3.5 Red: add a test to `tests/no_alloc.rs`: a compositor with a `Scroll` on the stack is updated once. Then it is updated 1000 more times, 40 ms apart, with zero heap allocations. See it fail to compile because `Scroll` is not public yet, or fail on a count.
-- [ ] 3.6 Green: make the test pass with no allocation in `render`, `next_change`, `is_finished`, or `brightness`. Verify with `cargo test -p gameclock-core --test no_alloc`.
-- [ ] 3.7 Red: write `Queue` tests: first in, first out. `push` gives `QueueFull` with 8 messages. `clear` empties it. `len` counts the waiting messages. See them fail.
-- [ ] 3.8 Green: add `Queue` on a `VecDeque` (D2). Verify that the 3.7 tests pass.
+- [x] 3.1 Red: write `Message::new` tests: the defaults, the 1 to 64 character limit (counted in characters), and the 1 to 10 pass limit. Also write "Spaces in the text stay". See them fail because the `message` module does not exist.
+- [x] 3.2 Green: add `Message`, `MessageError`, and the default constants (D2). Verify that the 3.1 tests pass.
+- [x] 3.3 Red: write `Scroll` tests with a reference drawing for "Text enters at the right edge" and "Position comes from the time". Also write "The next pass starts at the right edge". Also write "Character that the font does not have", "Finish after the passes", and "Next change is the next step". Also write "Message at night" and "Message in the morning". See them fail.
+- [x] 3.4 Green: add `Scroll` with `STEP = 40 ms` and the position from the time (D1). Verify that the 3.3 tests pass.
+- [x] 3.5 Red: add a test to `tests/no_alloc.rs`: a compositor with a `Scroll` on the stack is updated once. Then it is updated 1000 more times, 40 ms apart, with zero heap allocations. `Scroll` was public after 3.4, so the test passed at once. To see it fail, add a `String` clone to `render` for a short time: the test gives 1000 allocations. Then remove the clone.
+- [x] 3.6 Green: make the test pass with no allocation in `render`, `next_change`, `is_finished`, or `brightness`. Verify with `cargo test -p gameclock-core --test no_alloc`.
+- [x] 3.7 Red: write `Queue` tests: first in, first out. `push` gives `QueueFull` with 8 messages. `clear` empties it. `len` counts the waiting messages. See them fail.
+- [x] 3.8 Green: add `Queue` on a `VecDeque` (D2). Verify that the 3.7 tests pass.
 
 ## 4. Commands (`message-board`, `command-input`)
 
