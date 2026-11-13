@@ -50,8 +50,8 @@ option is not correct.
 
 ### Requirement: The text scrolls from right to left
 A message SHALL draw its text in the 7×13 bold font at baseline y = 20. The
-text SHALL start just past the right edge and move 1 pixel to the left each
-40 ms. A pass SHALL end when the last column of the text goes past the left
+text SHALL start just past the right edge. Each 40 ms, it SHALL move 1 pixel
+to the left. A pass SHALL end when the last column of the text goes past the left
 edge. The position SHALL come from the time since the message started.
 
 #### Scenario: Text enters at the right edge

@@ -127,7 +127,7 @@ longer `Copy`.
   The rest of the line is the text, with its inner spaces. The length is in
   characters, not bytes.
 - Each error has a fixed reply (the `message-board` spec). The reply to a
-  correct `message` is `ok`.
+  `message` command with no error is `ok`.
 
 ### 7. The status count
 
