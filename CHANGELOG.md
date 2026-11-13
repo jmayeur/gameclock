@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Message board (OpenSpec `message-board`, ADR-0017):
+  - `gameclock-core`: the `message` module with `Message`, the `Scroll`
+    scene, and the `Queue`. A message scrolls 1 pixel each 40 ms, from the
+    injected time, at the brightness of the clock schedule.
+    `Compositor::remove_finished` and `clear_foreground`.
+  - `gameclockd`: the commands `message [--passes=N] [--color=RRGGBB]
+    <text>` and `clear`. At most 8 messages wait. `status` gives
+    `messages=<n>`. `gameclockd ctl` joins its command words with one space.
 - Command input (OpenSpec `command-input`, ADR-0016):
   - `gameclockd`: a root-only control socket (`/run/gameclockd/control.sock`,
     `--control-socket=<path>`) with one command line for each connection.
@@ -50,6 +58,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Changed
 
+- The `status` reply ends with `messages=<n>`. The unknown-command reply
+  names five commands. `gameclockd ctl` with more than one word is no
+  longer a usage error (OpenSpec `message-board`).
 - The loop waits on an event channel. A signal thread and a control thread
   send events to it. This replaces the signal-pipe read (ADR-0016).
 - The service unit makes `/run/gameclockd` for the socket.

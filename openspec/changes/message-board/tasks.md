@@ -48,7 +48,7 @@
 
 ## 8. Docs and final verification
 
-- [ ] 8.1 Update `docs/design/architecture.md` (the message module, the queue in the loop, the new commands). Update `glossary.md` (message, pass, scroll step, message queue), `roadmap.md` (mark `message-board` done), the README, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 8.1 Update `docs/design/architecture.md` (the message module, the queue in the loop, the new commands). Update `glossary.md` (message, pass, scroll step, message queue), `roadmap.md` (mark `message-board` done), the README, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
 - [ ] 8.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
 - [ ] 8.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
