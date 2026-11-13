@@ -13,6 +13,7 @@
 pub mod clock;
 pub mod frame;
 pub mod heartbeat;
+pub mod message;
 pub mod panel;
 pub mod scene;
 pub mod schedule;

@@ -111,12 +111,23 @@ impl Compositor {
         self.foreground.len()
     }
 
+    /// Remove the foreground scenes that are finished at `now`. Do not render.
+    /// A scene that is pushed after this shows at the next update.
+    pub fn remove_finished(&mut self, now: &Zoned) {
+        self.foreground.retain(|s| !s.is_finished(now));
+    }
+
+    /// Remove all foreground scenes. The base scene stays.
+    pub fn clear_foreground(&mut self) {
+        self.foreground.clear();
+    }
+
     /// Remove the finished foreground scenes, then render the top scene for
     /// `now`. Give the frame and the top scene's brightness if the frame or
     /// the brightness is different from the last ones that this function
     /// gave. The first call always gives a frame.
     pub fn update(&mut self, now: &Zoned) -> Option<(&Frame, Brightness)> {
-        self.foreground.retain(|s| !s.is_finished(now));
+        self.remove_finished(now);
         match self.work.clear(Rgb888::BLACK) {
             Ok(()) => {}
             Err(never) => match never {},
@@ -452,6 +463,40 @@ mod tests {
             c.update(&at(T0)).is_none(),
             "only the first update after it"
         );
+    }
+
+    // Finished scenes can be removed before an update.
+
+    #[test]
+    fn next_scene_with_no_base_frame_between() {
+        let mut c = with_finishing_green();
+        assert!(all(c.update(&at(T0)).unwrap().0, Rgb888::GREEN));
+        let finish = at("2026-01-01T12:00:05Z");
+        c.remove_finished(&finish);
+        c.push(Solid::plain(Rgb888::BLUE));
+        let frame = c.update(&finish).expect("the blue scene").0;
+        assert!(all(frame, Rgb888::BLUE));
+    }
+
+    #[test]
+    fn unfinished_scene_stays() {
+        let mut c = with_finishing_green();
+        c.remove_finished(&at("2026-01-01T12:00:04Z"));
+        assert_eq!(c.foreground_len(), 1);
+    }
+
+    // All foreground scenes can be removed.
+
+    #[test]
+    fn base_scene_after_the_removal() {
+        let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
+        c.push(Solid::plain(Rgb888::GREEN));
+        c.push(Solid::plain(Rgb888::BLUE));
+        assert!(c.update(&at(T0)).is_some());
+        c.clear_foreground();
+        assert_eq!(c.foreground_len(), 0);
+        let frame = c.update(&at(T0)).expect("the base scene").0;
+        assert!(all(frame, Rgb888::RED));
     }
 
     // The compositor tells the last brightness.

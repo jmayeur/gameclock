@@ -31,8 +31,10 @@ and scope can change. Update this file when a change merges or a plan changes.
    `status`. The loop waits on an event channel with a signal thread and a
    control thread (ADR-0016). The legacy semaphore file is not supported. The
    Node form keeps the legacy clock as the boot service until `web-control`.
-6. **`message-board`**: a scrolling text scene with a queue, a pass count, and
-   a style.
+6. **`message-board`**: **done**. A scrolling text scene with a pass count
+   and a color, a queue of 8 messages, and the `message` and `clear`
+   commands. The position comes from the time. A message uses the brightness
+   of the clock schedule (ADR-0017).
 7. **`alerts`**: Panic and Bedtime as **configured instances** of one alert
    capability, not special-case code. An alert has a background effect, text,
    style, duration, priority, and interrupt rules. It uses shared message and
