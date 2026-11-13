@@ -34,8 +34,8 @@
 
 ## 6. Client (`command-input`)
 
-- [ ] 6.1 Red: write `parse_args` tests for "Message with no quotes" and "Socket option after the command word". Change `ctl_needs_exactly_one_command` so that only a missing command is a usage error. Write the `tests/cli.rs` test "Message through the client". See them fail.
-- [ ] 6.2 Green: change `parse_ctl` to join the command words (D8), and change the usage text if needed. Verify that the 6.1 tests and all `tests/cli.rs` tests pass in the default and the `simulator` builds.
+- [x] 6.1 Red: write `parse_args` tests for "Message with no quotes" and "Socket option after the command word". Change `ctl_needs_exactly_one_command` so that only a missing command is a usage error. Write the `tests/cli.rs` test "Message through the client". See them fail.
+- [x] 6.2 Green: change `parse_ctl` to join the command words (D8), and change the usage text if needed. Verify that the 6.1 tests and all `tests/cli.rs` tests pass in the default and the `simulator` builds.
 
 ## 7. On-device verification and measurements
 

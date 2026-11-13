@@ -264,7 +264,7 @@ pub enum UsageError {
     Unknown(String),
     /// `--control-socket=` with no path.
     EmptySocketPath,
-    /// `ctl` with no command or more than one command.
+    /// `ctl` with no command.
     Ctl,
 }
 
@@ -279,7 +279,9 @@ impl fmt::Display for UsageError {
                 f,
                 "--control-socket needs a path, for example --control-socket={DEFAULT_SOCKET}."
             ),
-            Self::Ctl => f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command>"),
+            Self::Ctl => {
+                f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command> [<word>...]")
+            }
         }
     }
 }
@@ -409,19 +411,28 @@ where
     Ok(Invocation::Daemon(parsed))
 }
 
-/// The client's arguments: an optional socket path and one command.
+/// The client's arguments: optional socket paths, then the command words.
+/// The words are joined with one space. After the first word, a
+/// `--control-socket=` argument is a word too.
 fn parse_ctl(args: impl Iterator<Item = String>) -> Result<CtlArgs, UsageError> {
     let mut socket = PathBuf::from(DEFAULT_SOCKET);
-    let mut command = None;
+    let mut words: Vec<String> = Vec::new();
     for arg in args {
-        if let Some(path) = socket_path(&arg) {
+        if words.is_empty()
+            && let Some(path) = socket_path(&arg)
+        {
             socket = path?;
-        } else if command.replace(arg).is_some() {
-            return Err(UsageError::Ctl);
+        } else {
+            words.push(arg);
         }
     }
-    let command = command.ok_or(UsageError::Ctl)?;
-    Ok(CtlArgs { socket, command })
+    if words.is_empty() {
+        return Err(UsageError::Ctl);
+    }
+    Ok(CtlArgs {
+        socket,
+        command: words.join(" "),
+    })
 }
 
 /// A panel for builds without the LED driver. It only logs its presents, so
@@ -765,18 +776,34 @@ mod tests {
     }
 
     #[test]
-    fn ctl_needs_exactly_one_command() {
-        for given in [
-            &["ctl"][..],
-            &["ctl", "status", "clock"],
-            &["ctl", "--control-socket=/tmp/c.sock"],
-        ] {
+    fn ctl_needs_a_command() {
+        for given in [&["ctl"][..], &["ctl", "--control-socket=/tmp/c.sock"]] {
             assert_eq!(parse_args(args(given)), Err(UsageError::Ctl), "{given:?}");
         }
         assert_eq!(
             UsageError::Ctl.to_string(),
-            "usage: gameclockd ctl [--control-socket=<path>] <command>"
+            "usage: gameclockd ctl [--control-socket=<path>] <command> [<word>...]"
         );
+    }
+
+    #[test]
+    fn message_with_no_quotes() {
+        let expected = CtlArgs {
+            socket: PathBuf::from(DEFAULT_SOCKET),
+            command: "message hello world".into(),
+        };
+        let given = args(&["ctl", "message", "hello", "world"]);
+        assert_eq!(parse_args(given), Ok(Invocation::Ctl(expected)));
+    }
+
+    #[test]
+    fn socket_option_after_the_command_word() {
+        let expected = CtlArgs {
+            socket: PathBuf::from(DEFAULT_SOCKET),
+            command: "message --control-socket=/tmp/a.sock".into(),
+        };
+        let given = args(&["ctl", "message", "--control-socket=/tmp/a.sock"]);
+        assert_eq!(parse_args(given), Ok(Invocation::Ctl(expected)));
     }
 
     #[test]
