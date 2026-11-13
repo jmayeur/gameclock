@@ -6,8 +6,8 @@
 
 ## 2. Compositor (`scene-model`)
 
-- [ ] 2.1 Red: write compositor tests for "Next scene with no base frame between", "Unfinished scene stays", and "Base scene after the removal". Run `cargo test -p gameclock-core` and see them fail because `remove_finished` and `clear_foreground` do not exist.
-- [ ] 2.2 Green: add `Compositor::remove_finished` and `Compositor::clear_foreground`, and make `update` call `remove_finished` (design D4). Verify that the 2.1 tests and all earlier compositor tests pass.
+- [x] 2.1 Red: write compositor tests for "Next scene with no base frame between", "Unfinished scene stays", and "Base scene after the removal". Run `cargo test -p gameclock-core` and see them fail because `remove_finished` and `clear_foreground` do not exist.
+- [x] 2.2 Green: add `Compositor::remove_finished` and `Compositor::clear_foreground`, and make `update` call `remove_finished` (design D4). Verify that the 2.1 tests and all earlier compositor tests pass.
 
 ## 3. Message, scroll, and queue (`message-board`)
 
