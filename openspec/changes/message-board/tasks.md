@@ -22,15 +22,15 @@
 
 ## 4. Commands (`message-board`, `command-input`)
 
-- [ ] 4.1 Red: write `parse_command` tests for "Message with the defaults" and "Message with options". Also write "No text", "Text too long", "Pass count out of range", "Color that is not correct", and "Unknown option". Test that `clear` parses and that `clear now` is an unknown command. Change the unknown-command test to the new reply. See them fail.
-- [ ] 4.2 Green: add `Command::Message` and `Command::Clear`, the option parser, and the error replies (D6). Verify that the 4.1 tests and all earlier command tests pass.
-- [ ] 4.3 Red: change the `status_reply` tests to the `messages=` field, and add a test for a count of 3. See them fail.
-- [ ] 4.4 Green: add the count to `status_reply` (D7). Verify that the 4.3 tests pass.
+- [x] 4.1 Red: write `parse_command` tests for "Message with the defaults" and "Message with options". Also write "No text", "Text too long", "Pass count out of range", "Color that is not correct", and "Unknown option". Test that `clear` parses and that `clear now` is an unknown command. Change the unknown-command test to the new reply. See them fail.
+- [x] 4.2 Green: add `Command::Message` and `Command::Clear`, the option parser, and the error replies (D6). Verify that the 4.1 tests and all earlier command tests pass.
+- [x] 4.3 Red: change the `status_reply` tests to the `messages=` field, and add a test for a count of 3. See them fail.
+- [x] 4.4 Green: add the count to `status_reply` (D7). Verify that the 4.3 tests pass.
 
 ## 5. Loop (`message-board`, `command-input`)
 
-- [ ] 5.1 Red: write `run` tests with the scripted wait for "First message starts at once" and "Second message waits". Also write "Next message starts with no clock between", and "Clock returns after the last message". Also write "Queue is full", "Clear during a message", and "Clear with no message". Also write "Status during a message" and "Message over the test pattern". Change "Status of the clock" and "Status of the test pattern" to the new reply. See them fail.
-- [ ] 5.2 Green: add the queue to `run` with the loop steps of D3, and the `message` and `clear` handling. Verify that the 5.1 tests and all earlier `run` tests pass.
+- [x] 5.1 Red: write `run` tests with the scripted wait for "First message starts at once" and "Second message waits". Also write "Next message starts with no clock between", and "Clock returns after the last message". Also write "Queue is full", "Clear during a message", and "Clear with no message". Also write "Status during a message" and "Message over the test pattern". Change "Status of the clock" and "Status of the test pattern" to the new reply. See them fail.
+- [x] 5.2 Green: add the queue to `run` with the loop steps of D3, and the `message` and `clear` handling. Verify that the 5.1 tests and all earlier `run` tests pass.
 
 ## 6. Client (`command-input`)
 

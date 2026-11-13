@@ -16,6 +16,7 @@ use command::{Command, OK, status_reply};
 
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
+use gameclock_core::message::{Queue, Scroll};
 use gameclock_core::schedule::Schedule;
 use gameclock_core::{Brightness, Compositor, Frame, Panel, Scene};
 use jiff::tz::TimeZone;
@@ -172,7 +173,8 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 /// frame on `panel` at the brightness of the top scene. Then it waits until
 /// the next scene change or an event. It does not wake at other times. A
 /// command runs at once, and its reply goes back on its sender. `mode` is
-/// the mode of `base`, for `status`.
+/// the mode of `base`, for `status`. Messages wait in a queue and show one at
+/// a time on top of the base scene (docs/adr/0017).
 ///
 /// # Errors
 /// [`RunError::Present`] if the panel fails to show a frame.
@@ -185,34 +187,41 @@ pub fn run<P: Panel>(
 ) -> Result<(), RunError<P::Error>> {
     let (width, height) = panel.dimensions();
     let mut compositor = Compositor::new(base, width, height);
+    let mut queue = Queue::new();
     loop {
         let now = clock.now();
-        if let Some((frame, brightness)) = compositor.update(&now) {
-            panel
-                .present(frame, brightness)
-                .map_err(RunError::Present)?;
-        }
+        show(panel, &mut compositor, &mut queue, &now)?;
         match wait.wait(compositor.deadline(&now), now.timestamp()) {
             Wake::Deadline => {}
             Wake::Shutdown => return Ok(()),
             Wake::Command(Request { command, reply }) => {
+                // Each change shows on the panel before the reply.
                 let text = match command {
                     Command::Mode(next) => {
                         if next != mode {
                             mode = next;
                             compositor.set_base(next.base_scene());
-                            // Show the new scene before the reply.
-                            let now = clock.now();
-                            if let Some((frame, brightness)) = compositor.update(&now) {
-                                panel
-                                    .present(frame, brightness)
-                                    .map_err(RunError::Present)?;
-                            }
+                            show(panel, &mut compositor, &mut queue, &clock.now())?;
                         }
                         OK.to_owned()
                     }
                     Command::Status => {
-                        status_reply(mode, clock.now().time_zone(), compositor.last_brightness())
+                        let messages = queue.len() + compositor.foreground_len();
+                        let zone = clock.now().time_zone().clone();
+                        status_reply(mode, &zone, compositor.last_brightness(), messages)
+                    }
+                    Command::Message(message) => match queue.push(message) {
+                        Ok(()) => {
+                            show(panel, &mut compositor, &mut queue, &clock.now())?;
+                            OK.to_owned()
+                        }
+                        Err(full) => format!("error: {full}"),
+                    },
+                    Command::Clear => {
+                        queue.clear();
+                        compositor.clear_foreground();
+                        show(panel, &mut compositor, &mut queue, &clock.now())?;
+                        OK.to_owned()
                     }
                 };
                 // The client can be gone. That is not an error of the loop.
@@ -220,6 +229,31 @@ pub fn run<P: Panel>(
             }
         }
     }
+}
+
+/// Remove the finished scenes. If no message shows, start the first message
+/// of the queue at `now`. Then render, and present a changed frame
+/// (docs/adr/0017).
+fn show<P: Panel>(
+    panel: &mut P,
+    compositor: &mut Compositor,
+    queue: &mut Queue,
+    now: &Zoned,
+) -> Result<(), RunError<P::Error>> {
+    compositor.remove_finished(now);
+    if compositor.foreground_len() == 0
+        && let Some(message) = queue.pop()
+    {
+        let (width, _) = panel.dimensions();
+        let scroll = Scroll::new(message, now.timestamp(), width, Schedule::legacy());
+        compositor.push(Box::new(scroll));
+    }
+    if let Some((frame, brightness)) = compositor.update(now) {
+        panel
+            .present(frame, brightness)
+            .map_err(RunError::Present)?;
+    }
+    Ok(())
 }
 
 /// A command line that the binary does not accept.
@@ -442,6 +476,7 @@ mod tests {
     use std::sync::mpsc;
 
     use crate::command::{Command, OK};
+    use gameclock_core::message::{Message, Scroll};
 
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::embedded_graphics::prelude::*;
@@ -942,7 +977,7 @@ mod tests {
     #[test]
     fn status_of_the_clock() {
         let (_, _, reply) = run_command(legacy_clock(), Mode::Clock, START, Command::Status);
-        assert_eq!(reply, "ok mode=clock zone=UTC brightness=25");
+        assert_eq!(reply, "ok mode=clock zone=UTC brightness=25 messages=0");
     }
 
     #[test]
@@ -953,7 +988,188 @@ mod tests {
             START,
             Command::Status,
         );
-        assert_eq!(reply, "ok mode=test-pattern zone=UTC brightness=100");
+        assert_eq!(
+            reply,
+            "ok mode=test-pattern zone=UTC brightness=100 messages=0"
+        );
+    }
+
+    // Messages (openspec/specs/message-board).
+
+    const T1: &str = "1970-01-01T00:00:00.500Z";
+
+    /// `ms` milliseconds after T1.
+    fn after_t1(ms: i64) -> &'static str {
+        let t = ts(T1) + jiff::SignedDuration::from_millis(ms);
+        Box::leak(t.to_string().into_boxed_str())
+    }
+
+    fn message(text: &str, passes: u8) -> Command {
+        Command::Message(Message::new(text, passes, Message::DEFAULT_COLOR).unwrap())
+    }
+
+    /// The frame of `text` that starts at `start`, at the time `at`.
+    fn scroll_frame(text: &str, start: &str, at: &str) -> Frame {
+        let m = Message::new(text, 10, Message::DEFAULT_COLOR).unwrap();
+        let mut scroll = Scroll::new(m, ts(start), 64, Schedule::legacy());
+        let mut f = Frame::new(64, 32);
+        scroll.render(&ts(at).to_zoned(TimeZone::UTC), &mut f);
+        f
+    }
+
+    /// The finish time of the 1-pass message `one`, which starts at T1:
+    /// (64 + 3 × 7) steps of 40 ms.
+    const ONE_PASS_MS: i64 = 85 * 40;
+
+    /// A command at `at`, and the receiver for its reply.
+    fn command_at(at: &'static str, command: Command) -> (Step, mpsc::Receiver<String>) {
+        let (tx, rx) = mpsc::channel();
+        (Step::CommandAt(at, command, tx), rx)
+    }
+
+    fn run_clock(steps: Vec<Step>) -> (Recorder, ScriptedWait) {
+        let mut panel = Recorder::new(64, 32);
+        let (clock, mut wait) = script(START, steps);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        (panel, wait)
+    }
+
+    #[test]
+    fn first_message_starts_at_once() {
+        let (tx, rx) = mpsc::channel();
+        let replies = Rc::new(rx);
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::clone(&replies),
+            reply_before_present: Vec::new(),
+        };
+        let (clock, mut wait) = script(START, [Step::CommandAt(T1, message("hello", 4), tx)]);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        assert_eq!(panel.reply_before_present, vec![false, false]);
+        assert_eq!(replies.try_recv().as_deref(), Ok(OK));
+        assert_eq!(panel.inner.presents[1].0, scroll_frame("hello", T1, T1));
+        assert_eq!(panel.inner.presents[1].1, Brightness::new(25));
+    }
+
+    #[test]
+    fn second_message_waits() {
+        let (one, _r1) = command_at(T1, message("one", 1));
+        let (two, r2) = command_at(after_t1(1000), message("two", 1));
+        let (panel, _) = run_clock(vec![one, two, Step::EarlyAt(after_t1(2000))]);
+        assert_eq!(r2.try_recv().as_deref(), Ok(OK));
+        let last = &panel.presents.last().unwrap().0;
+        assert_eq!(*last, scroll_frame("one", T1, after_t1(2000)));
+    }
+
+    #[test]
+    fn next_message_starts_with_no_clock_between() {
+        let finish = after_t1(ONE_PASS_MS);
+        let (one, _r1) = command_at(T1, message("one", 1));
+        let (two, _r2) = command_at(T1, message("two", 1));
+        let steps = vec![
+            one,
+            two,
+            Step::EarlyAt(after_t1(2000)),
+            Step::EarlyAt(finish),
+            Step::EarlyAt(after_t1(ONE_PASS_MS + 1000)),
+        ];
+        let (panel, _) = run_clock(steps);
+        let clock = clock_frame(64, 32, START);
+        assert!(panel.presents[1..].iter().all(|(f, _)| *f != clock));
+        let last = &panel.presents.last().unwrap().0;
+        let expected = scroll_frame("two", finish, after_t1(ONE_PASS_MS + 1000));
+        assert_eq!(*last, expected, "two starts at the finish of one");
+    }
+
+    #[test]
+    fn clock_returns_after_the_last_message() {
+        let (one, _r1) = command_at(T1, message("one", 1));
+        let steps = vec![
+            one,
+            Step::EarlyAt(after_t1(2000)),
+            Step::EarlyAt(after_t1(ONE_PASS_MS)),
+        ];
+        let (panel, wait) = run_clock(steps);
+        let last = &panel.presents.last().unwrap().0;
+        assert_eq!(*last, clock_frame(64, 32, START));
+        assert_eq!(
+            wait.deadlines.last(),
+            Some(&Some(ts("1970-01-01T00:01:00Z")))
+        );
+    }
+
+    #[test]
+    fn queue_is_full() {
+        let mut steps = Vec::new();
+        let mut replies = Vec::new();
+        for n in 0..10 {
+            let (step, rx) = command_at(T1, message(&format!("m{n}"), 1));
+            steps.push(step);
+            replies.push(rx);
+        }
+        run_clock(steps);
+        let replies: Vec<_> = replies.iter().map(|r| r.try_recv().unwrap()).collect();
+        assert!(replies[..9].iter().all(|r| r == OK), "{replies:?}");
+        assert_eq!(
+            replies[9],
+            "error: the message queue is full. 8 messages wait."
+        );
+    }
+
+    #[test]
+    fn clear_during_a_message() {
+        let (tx, rx) = mpsc::channel();
+        let replies = Rc::new(rx);
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::clone(&replies),
+            reply_before_present: Vec::new(),
+        };
+        let (one, _r1) = command_at(T1, message("one", 4));
+        let (two, _r2) = command_at(T1, message("two", 4));
+        let (three, _r3) = command_at(T1, message("three", 4));
+        let steps = vec![
+            one,
+            two,
+            three,
+            Step::EarlyAt(after_t1(1000)),
+            Step::CommandAt(after_t1(1500), Command::Clear, tx),
+            Step::EarlyAt(after_t1(20_000)),
+        ];
+        let (clock, mut wait) = script(START, steps);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        assert_eq!(replies.try_recv().as_deref(), Ok(OK));
+        let presents = &panel.inner.presents;
+        assert_eq!(presents.len(), 4, "the clock, one, one, the clock");
+        assert_eq!(presents[3].0, clock_frame(64, 32, START));
+        assert!(panel.reply_before_present.iter().all(|&r| !r));
+    }
+
+    #[test]
+    fn clear_with_no_message() {
+        let (panel, _, reply) = run_command(legacy_clock(), Mode::Clock, T1, Command::Clear);
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 1);
+    }
+
+    #[test]
+    fn status_during_a_message() {
+        let (one, _r1) = command_at(T1, message("one", 4));
+        let (two, _r2) = command_at(T1, message("two", 4));
+        let (three, _r3) = command_at(T1, message("three", 4));
+        let (status, reply) = command_at(after_t1(100), Command::Status);
+        run_clock(vec![one, two, three, status]);
+        let reply = reply.try_recv().unwrap();
+        assert!(reply.ends_with(" messages=3"), "{reply}");
+    }
+
+    #[test]
+    fn message_over_the_test_pattern() {
+        let (panel, _, reply) =
+            run_command(Box::new(Heartbeat), Mode::TestPattern, T1, message("hi", 4));
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents[0].1, Brightness::MAX);
+        assert_eq!(panel.presents[1].1, Brightness::new(25));
     }
 
     /// Records, at each present, whether a reply was already sent.
