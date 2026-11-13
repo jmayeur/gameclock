@@ -39,12 +39,12 @@
 
 ## 7. On-device verification and measurements
 
-- [ ] 7.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/message-board/measurements.md`.
-- [ ] 7.2 Deploy to the Pi with `scripts/deploy.sh` and start the service. Send `sudo gameclockd ctl message hello world`. Ask the user to look at the panel: the text scrolls 4 times, smoothly and with no flicker, and then the clock returns. Ask if the speed is good.
-- [ ] 7.3 Run "Long message on the Pi": send a message of 64 characters with `--passes=10`, wait 5 s, then run `scripts/measure.sh` for 60 s. Record per-thread CPU %, voluntary context switches, and RSS. The main thread must use 15% CPU or less.
-- [ ] 7.4 Stop the service. Run `gameclockd --led-show-refresh` by hand, and send the same long message from a second shell. Record the median and the 5th percentile of the refresh rate while it scrolls. The median must be 170 Hz or more.
-- [ ] 7.5 Send three messages and then `clear`. Ask the user to verify that the second message follows the first with no clock between, and that `clear` shows the clock at once. Verify the `messages=` count of `status`.
-- [ ] 7.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
+- [x] 7.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/message-board/measurements.md`.
+- [x] 7.2 Deploy to the Pi with `scripts/deploy.sh` and start the service. Send `sudo gameclockd ctl message hello world`. Ask the user to look at the panel: the text scrolls 4 times, smoothly and with no flicker, and then the clock returns. Ask if the speed is good.
+- [x] 7.3 Run "Long message on the Pi": send a message of 64 characters with `--passes=10`, wait 5 s, then run `scripts/measure.sh` for 60 s. Record per-thread CPU %, voluntary context switches, and RSS. The main thread must use 15% CPU or less.
+- [x] 7.4 Stop the service. Run `gameclockd --led-show-refresh` by hand, and send the same long message from a second shell. Record the median and the 5th percentile of the refresh rate while it scrolls. The median must be 170 Hz or more.
+- [x] 7.5 Send three messages and then `clear`. Ask the user to verify that the second message follows the first with no clock between, and that `clear` shows the clock at once. Verify the `messages=` count of `status`.
+- [x] 7.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 8. Docs and final verification
 
