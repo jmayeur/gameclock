@@ -26,9 +26,11 @@ and scope can change. Update this file when a change merges or a plan changes.
 
 ## Messages and alerts
 
-5. **`command-input`**: how commands get to the daemon. Candidates: a Unix
-   socket, HTTP in the daemon, and the legacy semaphore file. Blocking input
-   keeps idle CPU at zero.
+5. **`command-input`**: **done**. A root-only Unix socket with a line
+   protocol, `gameclockd ctl`, and the commands `clock`, `test-pattern`, and
+   `status`. The loop waits on an event channel with a signal thread and a
+   control thread (ADR-0016). The legacy semaphore file is not supported. The
+   Node form keeps the legacy clock as the boot service until `web-control`.
 6. **`message-board`**: a scrolling text scene with a queue, a pass count, and
    a style.
 7. **`alerts`**: Panic and Bedtime as **configured instances** of one alert

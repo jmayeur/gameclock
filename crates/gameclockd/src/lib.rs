@@ -2,12 +2,17 @@
 //! hardware or signals (`openspec/specs/daemon-lifecycle`).
 
 use core::fmt;
-use std::io::{self, Read};
-use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Duration;
 
 #[cfg(feature = "simulator")]
 pub mod sim;
+
+pub mod command;
+pub mod control;
+
+use command::{Command, OK, status_reply};
 
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
@@ -61,74 +66,82 @@ impl Clock for SystemClock {
     }
 }
 
+/// The stack size of each helper thread. They only block and send events
+/// (docs/adr/0016).
+pub const THREAD_STACK: usize = 64 * 1024;
+
+/// A command and the sender for its reply line (docs/adr/0016).
+#[derive(Debug)]
+pub struct Request {
+    /// The parsed command.
+    pub command: Command,
+    /// The loop sends the reply line here.
+    pub reply: mpsc::Sender<String>,
+}
+
+/// An event for the loop: from the signal thread or the socket thread.
+#[derive(Debug)]
+pub enum Event {
+    /// A stop signal came.
+    Shutdown,
+    /// A command came.
+    Command(Request),
+}
+
 /// Why a wait ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum Wake {
     /// The deadline came, or the wait ended early. Render again.
     Deadline,
     /// A stop signal came. Stop the daemon.
     Shutdown,
+    /// A command came. Do it and reply.
+    Command(Request),
 }
 
-/// Blocks until a deadline or a stop signal.
+/// Blocks until a deadline, a command, or a stop signal.
 pub trait Wait {
-    /// Block until `deadline` or a stop signal. `now` is the time when the
-    /// wait starts. With no deadline, block until a stop signal.
+    /// Block until `deadline`, a command, or a stop signal. `now` is the time
+    /// when the wait starts. With no deadline, block until a command or a
+    /// stop signal.
     fn wait(&mut self, deadline: Option<Timestamp>, now: Timestamp) -> Wake;
 }
 
-/// Waits on the read end of the signal pipe (docs/adr/0013).
+/// Waits on the event channel, with a timeout until the deadline
+/// (docs/adr/0016).
 ///
-/// `main` registers SIGTERM and SIGINT to write a byte to the other end. A
-/// byte means a stop signal. The read timeout ends the wait at the deadline.
-/// A signal that comes during a render stays in the pipe, so the next wait
-/// ends at once.
+/// The signal thread and the socket thread send the events. A closed channel
+/// means that no thread can send a stop signal. The daemon then stops.
 #[derive(Debug)]
-pub struct SignalWait {
-    pipe: UnixStream,
+pub struct ChannelWait {
+    events: mpsc::Receiver<Event>,
 }
 
-impl SignalWait {
-    /// A wait on `pipe`, the read end of the signal pipe.
+impl ChannelWait {
+    /// A wait on `events`.
     #[must_use]
-    pub fn new(pipe: UnixStream) -> Self {
-        Self { pipe }
+    pub fn new(events: mpsc::Receiver<Event>) -> Self {
+        Self { events }
     }
 }
 
-impl Wait for SignalWait {
+impl Wait for ChannelWait {
     fn wait(&mut self, deadline: Option<Timestamp>, now: Timestamp) -> Wake {
-        let timeout = match deadline {
-            None => None,
+        let event = match deadline {
+            None => self
+                .events
+                .recv()
+                .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
             Some(deadline) => match Duration::try_from(deadline.duration_since(now)) {
-                Ok(d) if !d.is_zero() => Some(d),
+                Ok(d) if !d.is_zero() => self.events.recv_timeout(d),
                 // The deadline is now or in the past.
                 _ => return Wake::Deadline,
             },
         };
-        if let Err(e) = self.pipe.set_read_timeout(timeout) {
-            eprintln!("gameclockd: the wait failed: {e}. The daemon stops.");
-            return Wake::Shutdown;
-        }
-        let mut byte = [0_u8; 1];
-        match self.pipe.read(&mut byte) {
-            // A byte is a stop signal. End of file means that the signal
-            // handlers are gone, so stop too. Do not loop on it.
-            Ok(_) => Wake::Shutdown,
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    io::ErrorKind::WouldBlock
-                        | io::ErrorKind::TimedOut
-                        | io::ErrorKind::Interrupted
-                ) =>
-            {
-                Wake::Deadline
-            }
-            Err(e) => {
-                eprintln!("gameclockd: the wait failed: {e}. The daemon stops.");
-                Wake::Shutdown
-            }
+        match event {
+            Ok(Event::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => Wake::Shutdown,
+            Ok(Event::Command(request)) => Wake::Command(request),
+            Err(mpsc::RecvTimeoutError::Timeout) => Wake::Deadline,
         }
     }
 }
@@ -157,14 +170,16 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 ///
 /// The loop renders `base` for the current time and presents each changed
 /// frame on `panel` at the brightness of the top scene. Then it waits until
-/// the next scene
-/// change. It does not wake at other times.
+/// the next scene change or an event. It does not wake at other times. A
+/// command runs at once, and its reply goes back on its sender. `mode` is
+/// the mode of `base`, for `status`.
 ///
 /// # Errors
 /// [`RunError::Present`] if the panel fails to show a frame.
 pub fn run<P: Panel>(
     panel: &mut P,
     base: Box<dyn Scene>,
+    mut mode: Mode,
     clock: &impl Clock,
     wait: &mut impl Wait,
 ) -> Result<(), RunError<P::Error>> {
@@ -180,22 +195,58 @@ pub fn run<P: Panel>(
         match wait.wait(compositor.deadline(&now), now.timestamp()) {
             Wake::Deadline => {}
             Wake::Shutdown => return Ok(()),
+            Wake::Command(Request { command, reply }) => {
+                let text = match command {
+                    Command::Mode(next) => {
+                        if next != mode {
+                            mode = next;
+                            compositor.set_base(next.base_scene());
+                            // Show the new scene before the reply.
+                            let now = clock.now();
+                            if let Some((frame, brightness)) = compositor.update(&now) {
+                                panel
+                                    .present(frame, brightness)
+                                    .map_err(RunError::Present)?;
+                            }
+                        }
+                        OK.to_owned()
+                    }
+                    Command::Status => {
+                        status_reply(mode, clock.now().time_zone(), compositor.last_brightness())
+                    }
+                };
+                // The client can be gone. That is not an error of the loop.
+                let _ = reply.send(text);
+            }
         }
     }
 }
 
-/// An argument that is not an hzeller `--led-*` driver flag or
-/// `--test-pattern`.
+/// A command line that the binary does not accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UsageError(pub String);
+pub enum UsageError {
+    /// An argument that is not a `--led-*` driver flag, `--test-pattern`, or
+    /// `--control-socket=<path>`.
+    Unknown(String),
+    /// `--control-socket=` with no path.
+    EmptySocketPath,
+    /// `ctl` with no command or more than one command.
+    Ctl,
+}
 
 impl fmt::Display for UsageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "unknown argument '{}'. gameclockd accepts only --led-* driver flags and --test-pattern.",
-            self.0
-        )
+        match self {
+            Self::Unknown(arg) => write!(
+                f,
+                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
+            ),
+            Self::EmptySocketPath => write!(
+                f,
+                "--control-socket needs a path, for example --control-socket={DEFAULT_SOCKET}."
+            ),
+            Self::Ctl => f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command>"),
+        }
     }
 }
 
@@ -223,6 +274,15 @@ impl Mode {
         }
     }
 
+    /// The name of the mode in commands and replies.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Clock => "clock",
+            Self::TestPattern => "test-pattern",
+        }
+    }
+
     /// The startup line that names the base scene.
     #[must_use]
     pub fn announcement(self) -> &'static str {
@@ -240,33 +300,94 @@ pub struct Args {
     pub mode: Mode,
     /// The `--led-*` flags in their order, for the driver.
     pub driver: Vec<String>,
+    /// The path of the control socket.
+    pub socket: PathBuf,
 }
 
-/// Check the command line. Only `--led-*` driver flags and `--test-pattern`
-/// are accepted. The function gives the driver flags unchanged and in their
-/// order, for the driver to parse (`openspec/specs/daemon-lifecycle`,
-/// docs/adr/0009).
+/// The checked command line of `gameclockd ctl`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CtlArgs {
+    /// The path of the control socket.
+    pub socket: PathBuf,
+    /// The command to send.
+    pub command: String,
+}
+
+/// What the binary runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Invocation {
+    /// The daemon.
+    Daemon(Args),
+    /// The client: send one command (`gameclockd ctl`).
+    Ctl(CtlArgs),
+}
+
+/// The default path of the control socket (docs/adr/0016).
+pub const DEFAULT_SOCKET: &str = "/run/gameclockd/control.sock";
+
+/// The argument that changes the path of the control socket.
+const CONTROL_SOCKET: &str = "--control-socket=";
+
+/// The path of a `--control-socket=<path>` argument, or `None` for another
+/// argument.
+fn socket_path(arg: &str) -> Option<Result<PathBuf, UsageError>> {
+    let path = arg.strip_prefix(CONTROL_SOCKET)?;
+    Some(if path.is_empty() {
+        Err(UsageError::EmptySocketPath)
+    } else {
+        Ok(PathBuf::from(path))
+    })
+}
+
+/// Check the command line. If the first argument is `ctl`, the rest is the
+/// client's command line. Otherwise only `--led-*` driver flags,
+/// `--test-pattern`, and `--control-socket=<path>` are accepted. The
+/// function gives the driver flags unchanged and in their order, for the
+/// driver to parse (`openspec/specs/daemon-lifecycle`, docs/adr/0009).
 ///
 /// # Errors
-/// [`UsageError`] that names the first argument that is not accepted.
-pub fn parse_args<I>(args: I) -> Result<Args, UsageError>
+/// [`UsageError`] for the first argument that is not accepted.
+pub fn parse_args<I>(args: I) -> Result<Invocation, UsageError>
 where
     I: IntoIterator<Item = String>,
 {
+    let mut args = args.into_iter().peekable();
+    if args.peek().is_some_and(|a| a == "ctl") {
+        args.next();
+        return parse_ctl(args).map(Invocation::Ctl);
+    }
     let mut parsed = Args {
         mode: Mode::Clock,
         driver: Vec::new(),
+        socket: PathBuf::from(DEFAULT_SOCKET),
     };
     for arg in args {
         if arg == TEST_PATTERN {
             parsed.mode = Mode::TestPattern;
+        } else if let Some(path) = socket_path(&arg) {
+            parsed.socket = path?;
         } else if arg.starts_with("--led-") {
             parsed.driver.push(arg);
         } else {
-            return Err(UsageError(arg));
+            return Err(UsageError::Unknown(arg));
         }
     }
-    Ok(parsed)
+    Ok(Invocation::Daemon(parsed))
+}
+
+/// The client's arguments: an optional socket path and one command.
+fn parse_ctl(args: impl Iterator<Item = String>) -> Result<CtlArgs, UsageError> {
+    let mut socket = PathBuf::from(DEFAULT_SOCKET);
+    let mut command = None;
+    for arg in args {
+        if let Some(path) = socket_path(&arg) {
+            socket = path?;
+        } else if command.replace(arg).is_some() {
+            return Err(UsageError::Ctl);
+        }
+    }
+    let command = command.ok_or(UsageError::Ctl)?;
+    Ok(CtlArgs { socket, command })
 }
 
 /// A panel for builds without the LED driver. It only logs its presents, so
@@ -316,7 +437,11 @@ mod tests {
     use core::cell::Cell;
     use core::convert::Infallible;
     use std::collections::VecDeque;
+    use std::path::PathBuf;
     use std::rc::Rc;
+    use std::sync::mpsc;
+
+    use crate::command::{Command, OK};
 
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::embedded_graphics::prelude::*;
@@ -386,12 +511,15 @@ mod tests {
     }
 
     /// One scripted end of a wait.
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug)]
     enum Step {
         /// The time moves to the deadline, and the wait ends.
         Deadline,
         /// The time moves to this time, and the wait ends before the deadline.
         EarlyAt(&'static str),
+        /// The time moves to this time, and this command arrives. The reply
+        /// goes to the sender.
+        CommandAt(&'static str, Command, mpsc::Sender<String>),
     }
 
     /// A wait that follows a script and records each deadline. After the last
@@ -416,6 +544,10 @@ mod tests {
                     self.now.set(ts(t));
                     Wake::Deadline
                 }
+                Some(Step::CommandAt(t, command, reply)) => {
+                    self.now.set(ts(t));
+                    Wake::Command(Request { command, reply })
+                }
             }
         }
     }
@@ -426,11 +558,11 @@ mod tests {
 
     const START: &str = "1970-01-01T00:00:00.250Z";
 
-    fn script(start: &str, steps: &[Step]) -> (FakeClock, ScriptedWait) {
+    fn script(start: &str, steps: impl IntoIterator<Item = Step>) -> (FakeClock, ScriptedWait) {
         let now = Rc::new(Cell::new(ts(start)));
         let wait = ScriptedWait {
             now: Rc::clone(&now),
-            steps: steps.iter().copied().collect(),
+            steps: steps.into_iter().collect(),
             deadlines: Vec::new(),
         };
         (FakeClock(now), wait)
@@ -438,10 +570,16 @@ mod tests {
 
     fn run_heartbeat<P: Panel>(
         panel: &mut P,
-        steps: &[Step],
+        steps: impl IntoIterator<Item = Step>,
     ) -> (Result<(), RunError<P::Error>>, ScriptedWait) {
         let (clock, mut wait) = script(START, steps);
-        let result = run(panel, Box::new(Heartbeat), &clock, &mut wait);
+        let result = run(
+            panel,
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            &clock,
+            &mut wait,
+        );
         (result, wait)
     }
 
@@ -516,8 +654,9 @@ mod tests {
         let expected = Args {
             mode: Mode::Clock,
             driver: given.clone(),
+            socket: PathBuf::from(DEFAULT_SOCKET),
         };
-        assert_eq!(parse_args(given), Ok(expected));
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
 
     #[test]
@@ -525,8 +664,9 @@ mod tests {
         let expected = Args {
             mode: Mode::Clock,
             driver: Vec::new(),
+            socket: PathBuf::from(DEFAULT_SOCKET),
         };
-        assert_eq!(parse_args(Vec::new()), Ok(expected));
+        assert_eq!(parse_args(Vec::new()), Ok(Invocation::Daemon(expected)));
     }
 
     #[test]
@@ -539,8 +679,75 @@ mod tests {
         let expected = Args {
             mode: Mode::TestPattern,
             driver: args(&["--led-pwm-bits=8", "--led-slowdown-gpio=1"]),
+            socket: PathBuf::from(DEFAULT_SOCKET),
         };
-        assert_eq!(parse_args(given), Ok(expected));
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn socket_path_is_not_a_driver_flag() {
+        let given = args(&["--control-socket=/tmp/a.sock", "--led-pwm-bits=8"]);
+        let expected = Args {
+            mode: Mode::Clock,
+            driver: args(&["--led-pwm-bits=8"]),
+            socket: PathBuf::from("/tmp/a.sock"),
+        };
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn default_socket_path() {
+        assert_eq!(DEFAULT_SOCKET, "/run/gameclockd/control.sock");
+    }
+
+    #[test]
+    fn empty_socket_path_is_a_usage_error() {
+        let err = parse_args(args(&["--control-socket="])).unwrap_err();
+        assert_eq!(err, UsageError::EmptySocketPath);
+        assert!(err.to_string().contains("--control-socket"), "{err}");
+    }
+
+    #[test]
+    fn ctl_with_a_command() {
+        let expected = CtlArgs {
+            socket: PathBuf::from(DEFAULT_SOCKET),
+            command: "status".into(),
+        };
+        assert_eq!(
+            parse_args(args(&["ctl", "status"])),
+            Ok(Invocation::Ctl(expected))
+        );
+    }
+
+    #[test]
+    fn ctl_with_a_socket_path() {
+        let expected = CtlArgs {
+            socket: PathBuf::from("/tmp/b.sock"),
+            command: "clock".into(),
+        };
+        let given = args(&["ctl", "--control-socket=/tmp/b.sock", "clock"]);
+        assert_eq!(parse_args(given), Ok(Invocation::Ctl(expected)));
+    }
+
+    #[test]
+    fn ctl_needs_exactly_one_command() {
+        for given in [
+            &["ctl"][..],
+            &["ctl", "status", "clock"],
+            &["ctl", "--control-socket=/tmp/c.sock"],
+        ] {
+            assert_eq!(parse_args(args(given)), Err(UsageError::Ctl), "{given:?}");
+        }
+        assert_eq!(
+            UsageError::Ctl.to_string(),
+            "usage: gameclockd ctl [--control-socket=<path>] <command>"
+        );
+    }
+
+    #[test]
+    fn ctl_only_as_the_first_argument() {
+        let err = parse_args(args(&["--test-pattern", "ctl"])).unwrap_err();
+        assert_eq!(err, UsageError::Unknown("ctl".into()));
     }
 
     #[test]
@@ -574,7 +781,7 @@ mod tests {
     #[test]
     fn unknown_argument_is_a_usage_error_naming_it() {
         let err = parse_args(args(&["--led-rows=32", "--frobnicate"])).unwrap_err();
-        assert_eq!(err, UsageError("--frobnicate".into()));
+        assert_eq!(err, UsageError::Unknown("--frobnicate".into()));
         assert!(err.to_string().contains("--frobnicate"), "{err}");
     }
 
@@ -586,8 +793,8 @@ mod tests {
     #[test]
     fn one_present_at_startup() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[]);
-        run(&mut panel, legacy_clock(), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, []);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
         assert_eq!(panel.presents.len(), 1);
         let (frame, brightness) = &panel.presents[0];
         assert_eq!(*frame, clock_frame(64, 32, START));
@@ -597,7 +804,7 @@ mod tests {
     #[test]
     fn heartbeat_presents_at_full_brightness() {
         let mut panel = Recorder::new(64, 32);
-        run_heartbeat(&mut panel, &[]).0.unwrap();
+        run_heartbeat(&mut panel, []).0.unwrap();
         assert_eq!(panel.presents[0].0, heartbeat_frame(64, 32, START));
         assert_eq!(panel.presents[0].1, Brightness::MAX);
     }
@@ -605,8 +812,15 @@ mod tests {
     #[test]
     fn brightness_of_the_base_scene() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[]);
-        run(&mut panel, Box::new(Dim { after: 25 }), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, []);
+        run(
+            &mut panel,
+            Box::new(Dim { after: 25 }),
+            Mode::Clock,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.presents.len(), 1);
         assert_eq!(panel.presents[0].1, Brightness::new(25));
     }
@@ -614,8 +828,15 @@ mod tests {
     #[test]
     fn brightness_change_presents_the_same_image() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[Step::Deadline]);
-        run(&mut panel, Box::new(Dim { after: 60 }), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, [Step::Deadline]);
+        run(
+            &mut panel,
+            Box::new(Dim { after: 60 }),
+            Mode::Clock,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.presents.len(), 2);
         assert_eq!(panel.presents[0].0, panel.presents[1].0);
         let levels: Vec<_> = panel.presents.iter().map(|(_, b)| b.percent()).collect();
@@ -625,31 +846,160 @@ mod tests {
     #[test]
     fn frame_follows_the_panels_size() {
         let mut panel = Recorder::new(32, 16);
-        run_heartbeat(&mut panel, &[]).0.unwrap();
+        run_heartbeat(&mut panel, []).0.unwrap();
         assert_eq!(panel.presents.len(), 1);
         assert_eq!(panel.presents[0].0, heartbeat_frame(32, 16, START));
     }
 
     #[test]
     fn wait_ends_at_the_scene_deadline() {
-        let (_, wait) = run_heartbeat(&mut Recorder::new(64, 32), &[]);
+        let (_, wait) = run_heartbeat(&mut Recorder::new(64, 32), []);
         assert_eq!(wait.deadlines[0], Some(ts("1970-01-01T00:00:01Z")));
     }
 
     #[test]
     fn static_scene_waits_with_no_timeout() {
         let mut panel = Recorder::new(64, 32);
-        let (clock, mut wait) = script(START, &[]);
-        run(&mut panel, Box::new(Red), &clock, &mut wait).unwrap();
+        let (clock, mut wait) = script(START, []);
+        run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
         assert_eq!(wait.deadlines, vec![None]);
         assert_eq!(panel.presents.len(), 1);
+    }
+
+    // Commands (openspec/specs/command-input).
+
+    /// Run `base` in `mode` with one command at `at`. Give the presents and
+    /// the reply.
+    fn run_command(
+        base: Box<dyn Scene>,
+        mode: Mode,
+        at: &'static str,
+        command: Command,
+    ) -> (Recorder, ScriptedWait, String) {
+        let mut panel = Recorder::new(64, 32);
+        let (tx, rx) = mpsc::channel();
+        let (clock, mut wait) = script(START, [Step::CommandAt(at, command, tx)]);
+        run(&mut panel, base, mode, &clock, &mut wait).unwrap();
+        let reply = rx.try_recv().expect("a reply");
+        (panel, wait, reply)
+    }
+
+    #[test]
+    fn a_command_ends_the_wait() {
+        let (panel, wait, reply) = run_command(
+            Box::new(Red),
+            Mode::Clock,
+            "1970-01-01T00:00:00.500Z",
+            Command::Status,
+        );
+        assert!(reply.starts_with("ok"), "{reply}");
+        assert_eq!(wait.deadlines, vec![None, None]);
+        assert_eq!(panel.presents.len(), 1);
+    }
+
+    #[test]
+    fn switch_to_the_test_pattern() {
+        let at = "1970-01-01T00:00:00.500Z";
+        let (panel, _, reply) = run_command(
+            legacy_clock(),
+            Mode::Clock,
+            at,
+            Command::Mode(Mode::TestPattern),
+        );
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 2);
+        assert_eq!(panel.presents[1].0, heartbeat_frame(64, 32, at));
+        assert_eq!(panel.presents[1].1, Brightness::MAX);
+    }
+
+    #[test]
+    fn switch_back_to_the_clock() {
+        let at = "1970-01-01T00:00:00.500Z";
+        let (panel, _, reply) = run_command(
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            at,
+            Command::Mode(Mode::Clock),
+        );
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 2);
+        assert_eq!(panel.presents[1].0, clock_frame(64, 32, at));
+        assert_eq!(panel.presents[1].1, Brightness::new(25));
+    }
+
+    #[test]
+    fn same_mode_does_not_present() {
+        let (panel, _, reply) = run_command(
+            legacy_clock(),
+            Mode::Clock,
+            "1970-01-01T00:00:00.500Z",
+            Command::Mode(Mode::Clock),
+        );
+        assert_eq!(reply, OK);
+        assert_eq!(panel.presents.len(), 1);
+    }
+
+    #[test]
+    fn status_of_the_clock() {
+        let (_, _, reply) = run_command(legacy_clock(), Mode::Clock, START, Command::Status);
+        assert_eq!(reply, "ok mode=clock zone=UTC brightness=25");
+    }
+
+    #[test]
+    fn status_of_the_test_pattern() {
+        let (_, _, reply) = run_command(
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            START,
+            Command::Status,
+        );
+        assert_eq!(reply, "ok mode=test-pattern zone=UTC brightness=100");
+    }
+
+    /// Records, at each present, whether a reply was already sent.
+    struct ReplyWatch {
+        inner: Recorder,
+        replies: Rc<mpsc::Receiver<String>>,
+        reply_before_present: Vec<bool>,
+    }
+
+    impl Panel for ReplyWatch {
+        type Error = Infallible;
+        fn dimensions(&self) -> (usize, usize) {
+            self.inner.dimensions()
+        }
+        fn present(&mut self, frame: &Frame, brightness: Brightness) -> Result<(), Infallible> {
+            self.reply_before_present
+                .push(self.replies.try_recv().is_ok());
+            self.inner.present(frame, brightness)
+        }
+    }
+
+    #[test]
+    fn the_reply_comes_after_the_present() {
+        let (tx, rx) = mpsc::channel();
+        let replies = Rc::new(rx);
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::clone(&replies),
+            reply_before_present: Vec::new(),
+        };
+        let step = Step::CommandAt(
+            "1970-01-01T00:00:00.500Z",
+            Command::Mode(Mode::TestPattern),
+            tx,
+        );
+        let (clock, mut wait) = script(START, [step]);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        assert_eq!(panel.reply_before_present, vec![false, false]);
+        assert_eq!(replies.try_recv().as_deref(), Ok(OK));
     }
 
     #[test]
     fn heartbeat_presents_each_second() {
         let mut panel = Recorder::new(64, 32);
         let steps = [Step::Deadline, Step::Deadline, Step::Deadline];
-        run_heartbeat(&mut panel, &steps).0.unwrap();
+        run_heartbeat(&mut panel, steps).0.unwrap();
         let columns: Vec<_> = panel
             .presents
             .iter()
@@ -662,7 +1012,7 @@ mod tests {
     fn early_wake_does_not_present() {
         let mut panel = Recorder::new(64, 32);
         let steps = [Step::EarlyAt("1970-01-01T00:00:00.900Z")];
-        let (result, wait) = run_heartbeat(&mut panel, &steps);
+        let (result, wait) = run_heartbeat(&mut panel, steps);
         result.unwrap();
         assert_eq!(panel.presents.len(), 1);
         let second = ts("1970-01-01T00:00:01Z");
@@ -671,20 +1021,20 @@ mod tests {
 
     #[test]
     fn messages_are_exact() {
-        let err = run_heartbeat(&mut Broken, &[]).0.unwrap_err();
+        let err = run_heartbeat(&mut Broken, []).0.unwrap_err();
         assert_eq!(
             err.to_string(),
             "the panel did not show the frame: the LEDs are on fire"
         );
         assert_eq!(
-            UsageError("--frobnicate".into()).to_string(),
-            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags and --test-pattern."
+            UsageError::Unknown("--frobnicate".into()).to_string(),
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
         );
     }
 
     #[test]
     fn present_failure_is_reported_and_exits_non_zero() {
-        let (result, _) = run_heartbeat(&mut Broken, &[]);
+        let (result, _) = run_heartbeat(&mut Broken, []);
         let err = result.as_ref().unwrap_err();
         assert!(
             err.to_string().contains("the LEDs are on fire"),
@@ -695,19 +1045,17 @@ mod tests {
 
     #[test]
     fn success_exits_zero() {
-        let (result, _) = run_heartbeat(&mut Recorder::new(64, 32), &[]);
+        let (result, _) = run_heartbeat(&mut Recorder::new(64, 32), []);
         assert_eq!(exit_status(&result), 0);
     }
 
-    mod signal_wait {
+    mod channel_wait {
         use super::*;
-        use std::io::Write;
-        use std::os::unix::net::UnixStream;
         use std::time::{Duration, Instant};
 
-        fn pair() -> (SignalWait, UnixStream) {
-            let (read, write) = UnixStream::pair().unwrap();
-            (SignalWait::new(read), write)
+        fn channel() -> (ChannelWait, mpsc::Sender<Event>) {
+            let (tx, rx) = mpsc::channel();
+            (ChannelWait::new(rx), tx)
         }
 
         fn now_plus(ms: i64) -> (Option<Timestamp>, Timestamp) {
@@ -718,19 +1066,19 @@ mod tests {
 
         #[test]
         fn past_deadline_ends_at_once() {
-            let (mut wait, _write) = pair();
+            let (mut wait, _tx) = channel();
             let (deadline, now) = now_plus(-10);
             let start = Instant::now();
-            assert_eq!(wait.wait(deadline, now), Wake::Deadline);
+            assert!(matches!(wait.wait(deadline, now), Wake::Deadline));
             assert!(start.elapsed() < Duration::from_millis(20));
         }
 
         #[test]
         fn deadline_ends_the_wait_after_its_time() {
-            let (mut wait, _write) = pair();
+            let (mut wait, _tx) = channel();
             let (deadline, now) = now_plus(50);
             let start = Instant::now();
-            assert_eq!(wait.wait(deadline, now), Wake::Deadline);
+            assert!(matches!(wait.wait(deadline, now), Wake::Deadline));
             assert!(
                 start.elapsed() >= Duration::from_millis(50),
                 "{:?}",
@@ -739,37 +1087,52 @@ mod tests {
         }
 
         #[test]
-        fn a_byte_in_the_pipe_is_a_shutdown() {
-            let (mut wait, mut write) = pair();
-            write.write_all(&[1]).unwrap();
+        fn a_shutdown_event_is_a_shutdown() {
+            let (mut wait, tx) = channel();
+            tx.send(Event::Shutdown).unwrap();
             let (deadline, now) = now_plus(5_000);
-            assert_eq!(wait.wait(deadline, now), Wake::Shutdown);
+            assert!(matches!(wait.wait(deadline, now), Wake::Shutdown));
         }
 
         #[test]
-        fn closed_pipe_is_a_shutdown() {
-            let (mut wait, write) = pair();
-            drop(write);
-            assert_eq!(wait.wait(None, Timestamp::now()), Wake::Shutdown);
+        fn a_request_is_a_command() {
+            let (mut wait, tx) = channel();
+            let (reply, _rx) = mpsc::channel();
+            let request = Request {
+                command: Command::Status,
+                reply,
+            };
+            tx.send(Event::Command(request)).unwrap();
+            match wait.wait(None, Timestamp::now()) {
+                Wake::Command(r) => assert_eq!(r.command, Command::Status),
+                other => panic!("expected a command, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn closed_channel_is_a_shutdown() {
+            let (mut wait, tx) = channel();
+            drop(tx);
+            assert!(matches!(wait.wait(None, Timestamp::now()), Wake::Shutdown));
         }
 
         #[test]
         fn no_presents_while_waiting() {
-            let (mut wait, mut write) = pair();
+            let (mut wait, tx) = channel();
             let mut panel = Recorder::new(64, 32);
             let clock = SystemClock::new(TimeZone::UTC);
-            let writer = std::thread::spawn(move || {
+            let sender = std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(500));
-                write.write_all(&[1]).unwrap();
+                tx.send(Event::Shutdown).unwrap();
             });
             let start = Instant::now();
-            run(&mut panel, Box::new(Red), &clock, &mut wait).unwrap();
+            run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
             assert!(
                 start.elapsed() >= Duration::from_millis(500),
                 "run must wait"
             );
             assert_eq!(panel.presents.len(), 1);
-            writer.join().unwrap();
+            sender.join().unwrap();
         }
     }
 

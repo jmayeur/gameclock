@@ -91,6 +91,20 @@ impl Compositor {
         Some(next.max(earliest))
     }
 
+    /// Replace the base scene with `base`. The foreground scenes stay. The
+    /// next update gives a frame, even if the image did not change.
+    pub fn set_base(&mut self, base: Box<dyn Scene>) {
+        self.base = base;
+        self.started = false;
+    }
+
+    /// The brightness of the last frame that `update` gave. It is full
+    /// brightness before the first update.
+    #[must_use]
+    pub fn last_brightness(&self) -> Brightness {
+        self.shown_brightness
+    }
+
     /// The number of foreground scenes.
     #[must_use]
     pub fn foreground_len(&self) -> usize {
@@ -406,6 +420,53 @@ mod tests {
         let mut c = Compositor::new(Dim::fixed(25), W, H);
         c.push(Dim::fixed(80));
         assert_eq!(c.update(&at(T0)).unwrap().1, Brightness::new(80));
+    }
+
+    // The base scene can be replaced.
+
+    #[test]
+    fn new_base_scene_shows_at_the_next_update() {
+        let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
+        assert!(c.update(&at(T0)).is_some());
+        c.set_base(Solid::plain(Rgb888::BLUE));
+        let frame = c.update(&at(T0)).expect("a frame after the replacement").0;
+        assert!(all(frame, Rgb888::BLUE));
+    }
+
+    #[test]
+    fn foreground_scenes_stay_on_top() {
+        let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
+        c.push(Solid::plain(Rgb888::GREEN));
+        c.set_base(Solid::plain(Rgb888::BLUE));
+        assert!(all(c.update(&at(T0)).unwrap().0, Rgb888::GREEN));
+        assert_eq!(c.foreground_len(), 1);
+    }
+
+    #[test]
+    fn same_image_still_gives_a_frame() {
+        let mut c = Compositor::new(Solid::plain(Rgb888::RED), W, H);
+        assert!(c.update(&at(T0)).is_some());
+        c.set_base(Solid::plain(Rgb888::RED));
+        assert!(c.update(&at(T0)).is_some());
+        assert!(
+            c.update(&at(T0)).is_none(),
+            "only the first update after it"
+        );
+    }
+
+    // The compositor tells the last brightness.
+
+    #[test]
+    fn last_brightness_after_an_update() {
+        let mut c = Compositor::new(Dim::fixed(25), W, H);
+        c.update(&at(T0));
+        assert_eq!(c.last_brightness(), Brightness::new(25));
+    }
+
+    #[test]
+    fn last_brightness_before_an_update() {
+        let c = Compositor::new(Dim::fixed(25), W, H);
+        assert_eq!(c.last_brightness(), Brightness::MAX);
     }
 
     // The deadline is the top scene's next change.

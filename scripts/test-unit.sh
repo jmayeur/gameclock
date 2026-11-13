@@ -21,6 +21,9 @@ has "EnvironmentFile=-/etc/default/gameclockd"
 # 8 PWM bits first. A later flag from GAMECLOCKD_ARGS wins (ADR-0015).
 has "ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 \$GAMECLOCKD_ARGS"
 has "WantedBy=multi-user.target"
+# A root-only directory for the control socket (ADR-0016).
+has "RuntimeDirectory=gameclockd"
+has "RuntimeDirectoryMode=0700"
 grep -q "^User=" "$unit" && fail "$unit sets User=; the driver needs root to start (ADR-0010)"
 
 # systemd-analyze verify needs ExecStart to exist. So it reads a copy that

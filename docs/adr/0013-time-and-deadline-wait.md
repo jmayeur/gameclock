@@ -1,6 +1,6 @@
 # ADR-0013: Time with jiff, and the deadline wait
 
-- **Status:** Accepted
+- **Status:** Accepted. The deadline wait is changed by ADR-0016.
 - **Date:** 2026-11-10
 - **Related:** ADR-0005, ADR-0006, ADR-0010, ADR-0012. OpenSpec change
   `scene-model`.

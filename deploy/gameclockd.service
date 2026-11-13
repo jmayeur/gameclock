@@ -16,6 +16,10 @@ EnvironmentFile=-/etc/default/gameclockd
 # so a --led-pwm-bits value in GAMECLOCKD_ARGS replaces this one.
 ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 $GAMECLOCKD_ARGS
 Restart=on-failure
+# /run/gameclockd holds the control socket. Root only (docs/adr/0016).
+# systemd removes the directory when the service stops.
+RuntimeDirectory=gameclockd
+RuntimeDirectoryMode=0700
 RestartSec=2
 
 [Install]
