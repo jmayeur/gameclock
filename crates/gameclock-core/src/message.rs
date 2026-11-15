@@ -112,13 +112,13 @@ impl fmt::Display for MessageError {
 
 impl std::error::Error for MessageError {}
 
-/// A scene that scrolls one message from the right edge to the left edge.
+/// The position of a text that scrolls from the right edge to the left edge,
+/// 1 pixel for each [`STEP`].
 ///
-/// The position comes from the time since `start`, so a late render does not
-/// slow the scroll (docs/adr/0017).
-#[derive(Debug, Clone)]
-pub struct Scroll {
-    message: Message,
+/// The position comes from the time since the start, so a late render does
+/// not slow the scroll (docs/adr/0017). Messages and alerts use it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScrollPath {
     start: Timestamp,
     /// The x position of the text at the start of each pass.
     width: i64,
@@ -126,27 +126,24 @@ pub struct Scroll {
     pass: i64,
     /// The steps in all passes.
     total: i64,
-    schedule: Schedule,
 }
 
-impl Scroll {
-    /// A scroll of `message` that starts at `start` on a panel `width`
-    /// pixels wide. The brightness comes from `schedule`.
+impl ScrollPath {
+    /// The path of a text of `chars` characters, each `glyph` pixels wide,
+    /// on a panel `width` pixels wide. The scroll starts at `start` and
+    /// makes `passes` passes.
     #[must_use]
-    pub fn new(message: Message, start: Timestamp, width: usize, schedule: Schedule) -> Self {
-        let glyph = FONT_7X13_BOLD.character_size.width + FONT_7X13_BOLD.character_spacing;
-        // A message has at most 64 characters, so these values are small.
-        let chars = i64::try_from(message.text.chars().count()).unwrap_or(i64::MAX);
+    pub fn new(start: Timestamp, width: usize, chars: usize, glyph: u32, passes: u8) -> Self {
+        // A text has few characters, so these values are small.
+        let chars = i64::try_from(chars).unwrap_or(i64::MAX);
         let width = i64::try_from(width).unwrap_or(i64::MAX);
         let pass = width.saturating_add(chars.saturating_mul(i64::from(glyph)));
-        let total = pass.saturating_mul(i64::from(message.passes));
+        let total = pass.saturating_mul(i64::from(passes));
         Self {
-            message,
             start,
             width,
             pass,
             total,
-            schedule,
         }
     }
 
@@ -157,15 +154,70 @@ impl Scroll {
         let steps = elapsed.as_millis().div_euclid(STEP.as_millis()).max(0);
         i64::try_from(steps).unwrap_or(i64::MAX)
     }
+
+    /// The x position of the text at `now`. `None` after the last pass.
+    #[must_use]
+    pub fn x(&self, now: &Zoned) -> Option<i32> {
+        let steps = self.steps(now);
+        if steps >= self.total || self.pass <= 0 {
+            return None;
+        }
+        i32::try_from(self.width - steps % self.pass).ok()
+    }
+
+    /// The time of the next step after `now`. The last step is the finish
+    /// time. `None` after the last pass.
+    #[must_use]
+    pub fn next_step(&self, now: &Zoned) -> Option<Timestamp> {
+        let steps = self.steps(now);
+        if steps >= self.total {
+            return None;
+        }
+        let next = STEP.checked_mul(i32::try_from(steps + 1).ok()?)?;
+        self.start.checked_add(next).ok()
+    }
+
+    /// The time at which the last pass ends.
+    #[must_use]
+    pub fn finish(&self) -> Option<Timestamp> {
+        let total = STEP.checked_mul(i32::try_from(self.total).ok()?)?;
+        self.start.checked_add(total).ok()
+    }
+
+    /// True when the last pass ended at `now`.
+    #[must_use]
+    pub fn is_finished(&self, now: &Zoned) -> bool {
+        self.steps(now) >= self.total
+    }
+}
+
+/// A scene that scrolls one message from the right edge to the left edge.
+#[derive(Debug, Clone)]
+pub struct Scroll {
+    message: Message,
+    path: ScrollPath,
+    schedule: Schedule,
+}
+
+impl Scroll {
+    /// A scroll of `message` that starts at `start` on a panel `width`
+    /// pixels wide. The brightness comes from `schedule`.
+    #[must_use]
+    pub fn new(message: Message, start: Timestamp, width: usize, schedule: Schedule) -> Self {
+        let glyph = FONT_7X13_BOLD.character_size.width + FONT_7X13_BOLD.character_spacing;
+        let chars = message.text.chars().count();
+        let path = ScrollPath::new(start, width, chars, glyph, message.passes);
+        Self {
+            message,
+            path,
+            schedule,
+        }
+    }
 }
 
 impl Scene for Scroll {
     fn render(&mut self, now: &Zoned, frame: &mut Frame) {
-        let steps = self.steps(now);
-        if steps >= self.total || self.pass <= 0 {
-            return;
-        }
-        let Ok(x) = i32::try_from(self.width - steps % self.pass) else {
+        let Some(x) = self.path.x(now) else {
             return;
         };
         let style = MonoTextStyle::new(&FONT_7X13_BOLD, self.message.color);
@@ -183,16 +235,11 @@ impl Scene for Scroll {
 
     /// The time of the next step. The last step is the finish time.
     fn next_change(&self, now: &Zoned) -> Option<Timestamp> {
-        let steps = self.steps(now);
-        if steps >= self.total {
-            return None;
-        }
-        let next = STEP.checked_mul(i32::try_from(steps + 1).ok()?)?;
-        self.start.checked_add(next).ok()
+        self.path.next_step(now)
     }
 
     fn is_finished(&self, now: &Zoned) -> bool {
-        self.steps(now) >= self.total
+        self.path.is_finished(now)
     }
 
     fn brightness(&self, now: &Zoned) -> Brightness {
@@ -399,6 +446,41 @@ mod tests {
             );
         }
         assert_ne!(render(&mut odd, &at(200)), black());
+    }
+
+    // The scroll path is a shared part (`openspec/specs/alerts`).
+
+    fn path(chars: usize, glyph: u32, passes: u8) -> ScrollPath {
+        ScrollPath::new(T.parse().unwrap(), 64, chars, glyph, passes)
+    }
+
+    #[test]
+    fn path_for_the_small_font() {
+        let p = path(2, 7, 4);
+        assert_eq!(p.x(&at(0)), Some(64));
+        assert_eq!(p.x(&at(40)), Some(63));
+        assert_eq!(p.x(&at(1000)), Some(39));
+        assert!(!p.is_finished(&at(12_479)));
+        assert!(p.is_finished(&at(12_480)));
+        assert_eq!(p.x(&at(12_480)), None);
+        let start: Timestamp = T.parse().unwrap();
+        assert_eq!(
+            p.next_step(&at(1010)),
+            Some(start + SignedDuration::from_millis(1040))
+        );
+        assert_eq!(p.next_step(&at(12_480)), None);
+        assert_eq!(p.finish(), Some(start + SignedDuration::from_millis(12_480)));
+    }
+
+    #[test]
+    fn path_for_the_large_font() {
+        // `GAME OVER - TURN IT OFF!` has 24 characters, 10 pixels each.
+        let p = path(24, 10, 2);
+        assert_eq!(p.x(&at(1000)), Some(39));
+        assert_eq!(p.x(&at(12_160)), Some(64));
+        assert!(!p.is_finished(&at(12_160)));
+        assert_eq!(p.x(&at(12_200)), Some(63));
+        assert!(p.is_finished(&at(24_320)));
     }
 
     // A message finishes after its passes.
