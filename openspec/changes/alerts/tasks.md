@@ -34,15 +34,15 @@
 
 ## 6. Commands (`alerts`, `command-input`)
 
-- [ ] 6.1 Red: write `parse_command` tests for `alert panic`, `alert bedtime`, `alert bed-flash`, and `alert stop`. Also write "No name", "Unknown name", and `alert fire now` as the unknown name `fire now`. Change the unknown-command test to the new reply. Write the refusal reply test for a message and for an alert. See them fail.
-- [ ] 6.2 Green: add `Command::Alert`, `Command::StopAlert`, `CommandError::NoAlertName`, `CommandError::UnknownAlert`, and the refusal reply (D6). The list of names comes from `BUILT_IN`. Verify that the 6.1 tests and all earlier command tests pass.
-- [ ] 6.3 Red: change the `status_reply` tests to the `alert=` field. Add a test for `alert=panic`. See them fail.
-- [ ] 6.4 Green: add the alert name to `status_reply`. Verify that the 6.3 tests pass.
+- [x] 6.1 Red: write `parse_command` tests for `alert panic`, `alert bedtime`, `alert bed-flash`, and `alert stop`. Also write "No name", "Unknown name", and `alert fire now` as the unknown name `fire now`. Change the unknown-command test to the new reply. See them fail. The board tests of 5.3 cover the refusal reply for a message and for an alert.
+- [x] 6.2 Green: add `Command::Alert`, `Command::StopAlert`, `CommandError::NoAlertName`, `CommandError::UnknownAlert`, and the refusal reply (D6). The list of names comes from `BUILT_IN`. Verify that the 6.1 tests and all earlier command tests pass.
+- [x] 6.3 Red: change the `status_reply` tests to the `alert=` field. Add a test for `alert=panic`. See them fail.
+- [x] 6.4 Green: add the alert name to `status_reply`. Verify that the 6.3 tests pass.
 
 ## 7. Loop (`alerts`, `message-board`, `command-input`)
 
-- [ ] 7.1 Red: write `run` tests with the scripted wait. Write "Alert over the clock" (the present comes before the `ok` reply), and "Status during an alert". Also write "Wake before the next minute", "No early wake outside a window", and "Bedtime alert repeats with no gap". Also write "Refused trigger during a message", and a trigger in `test-pattern` mode. Change the status tests to the new reply. See them fail.
-- [ ] 7.2 Green: replace the queue and `show` in `run` with `Board` and `Triggers` (D4, D5). Handle `alert`, `alert stop`, and the new `clear`. Use the earlier of the compositor deadline and `triggers.next()` as the wait deadline. Verify that the 7.1 tests and all earlier `run` tests pass.
+- [x] 7.1 Red: write `run` tests with the scripted wait. Write "Alert over the clock" (the present comes before the `ok` reply), and "Status during an alert". Also write "Wake before the next minute", "No early wake outside a window", and "Bedtime alert repeats with no gap". Also write "Refused trigger during a message", and a trigger in `test-pattern` mode. Change the status tests to the new reply. See them fail.
+- [x] 7.2 Green: replace the queue and `show` in `run` with `Board` and `Triggers` (D4, D5). Handle `alert`, `alert stop`, and the new `clear`. Use the earlier of the compositor deadline and `triggers.next()` as the wait deadline. Verify that the 7.1 tests and all earlier `run` tests pass.
 - [ ] 7.3 Red: write the `tests/cli.rs` test "Alert through the client": `ctl alert panic` gives `ok`, and `ctl alert fire` exits with status 1. See it fail. Then make it pass in the default and the `simulator` builds.
 - [ ] 7.4 Update `docs/design/architecture.md`: the `effect`, `alert`, and `board` modules, the board in the loop, the trigger wake, and the `alert` command. Verify with `scripts/lint-docs.sh`.
 

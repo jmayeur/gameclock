@@ -66,6 +66,10 @@ from one alert capability, so that a new alert is data and not new code.
   restarts. `clear` keeps an alert that its rule protects.
 - `command-input`: the unknown-command reply lists `alert`. The `status`
   reply gives the alert on the panel.
+- `daemon-lifecycle`: the wait deadline is also the next trigger time. A
+  static scene waits until the next trigger, not with no timeout.
+- `scene-model`: the compositor deadline does not change, but the daemon
+  then waits until the next trigger time.
 
 ## ADRs
 
