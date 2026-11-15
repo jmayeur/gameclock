@@ -17,7 +17,7 @@
 - [x] 3.2 Green: add `Alert`, `Background`, `TextStyle`, `TextColor`, `Motion`, `ClearRule`, `Priority`, the `panic` entry of `BUILT_IN`, and `AlertScene` (D1, D2). Verify that the 3.1 tests pass.
 - [x] 3.3 Red: write tests for "Bedtime text enters at the right edge" and "Second pass starts at the right edge". Also write "Duration ends the bedtime alert before its passes". Also write "Bed-flash frame", "Bed-flash next change is its finish", and "Two definitions with the same parts give the same frames". Also write "Panic at night" and "Bedtime on a bedtime night". Test `find` for each name and for an unknown name. See them fail.
 - [x] 3.4 Green: add the `bedtime` and `bed-flash` entries, the still and scroll motions, the brightness, and `find`. Verify that the 3.3 tests pass.
-- [x] 3.5 Red: add a test to `tests/no_alloc.rs` for each built-in alert: update a compositor with the alert scene on the stack 1000 times, spread evenly before the alert finishes. It must make zero heap allocations. It passed at once, so a `String` clone in `render` for a short time made it fail (panic). Then the clone was removed.
+- [x] 3.5 Red: add a test to `tests/no_alloc.rs` for each built-in alert. It updates a compositor with the alert scene on the stack 1000 times, before the alert finishes. It must make zero heap allocations. It passed at once, so a `String` clone in `render` for a short time made it fail (panic). Then the clone was removed.
 - [x] 3.6 Green: make the 3.5 tests pass with no allocation in `render`, `next_change`, `is_finished`, or `brightness`. Verify with `cargo test -p gameclock-core --test no_alloc`.
 
 ## 4. Timed triggers (`alerts`)
@@ -43,8 +43,8 @@
 
 - [x] 7.1 Red: write `run` tests with the scripted wait. Write "Alert over the clock" (the present comes before the `ok` reply), and "Status during an alert". Also write "Wake before the next minute", "No early wake outside a window", and "Bedtime alert repeats with no gap". Also write "Refused trigger during a message", and a trigger in `test-pattern` mode. Change the status tests to the new reply. See them fail.
 - [x] 7.2 Green: replace the queue and `show` in `run` with `Board` and `Triggers` (D4, D5). Handle `alert`, `alert stop`, and the new `clear`. Use the earlier of the compositor deadline and `triggers.next()` as the wait deadline. Verify that the 7.1 tests and all earlier `run` tests pass.
-- [ ] 7.3 Red: write the `tests/cli.rs` test "Alert through the client": `ctl alert panic` gives `ok`, and `ctl alert fire` exits with status 1. See it fail. Then make it pass in the default and the `simulator` builds.
-- [ ] 7.4 Update `docs/design/architecture.md`: the `effect`, `alert`, and `board` modules, the board in the loop, the trigger wake, and the `alert` command. Verify with `scripts/lint-docs.sh`.
+- [x] 7.3 Red: write the `tests/cli.rs` test "Alert through the client": `ctl alert panic` gives `ok`, and `ctl alert fire` exits with status 1. The code of 7.2 made it pass at once, so a wrong command word in the parser for a short time made it fail. It passes in the default and the `simulator` builds.
+- [x] 7.4 Update `docs/design/architecture.md`: the `effect`, `alert`, and `board` modules, the board in the loop, the trigger wake, and the `alert` command. Verify with `scripts/lint-docs.sh`.
 
 ## 8. Simulator verification
 

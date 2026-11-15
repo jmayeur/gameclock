@@ -1,6 +1,6 @@
 # Architecture
 
-> The state after `message-board`. Sections marked **Planned** give the agreed
+> The state after `alerts`. Sections marked **Planned** give the agreed
 > direction (ADRs 0004–0006). They become current as OpenSpec changes merge.
 
 ## Shape
@@ -25,8 +25,9 @@
   or wall clock (ADR-0005). It holds `Frame`, the `Panel` trait,
   `Brightness`, the diagnostic `test_pattern`, the `Scene` trait, the
   `Compositor`, the `Clock` and `Heartbeat` scenes (ADR-0012), the
-  time-of-day `schedule` (ADR-0014), and the `message` parts (ADR-0017). Time comes in as a `jiff::Zoned`
-  (ADR-0013).
+  time-of-day `schedule` (ADR-0014), the `message` parts (ADR-0017), and the
+  `effect`, `alert`, and `board` parts (ADR-0018). Time comes in as a
+  `jiff::Zoned` (ADR-0013).
 - **`gameclockd`** (exists): the daemon. It checks arguments, handles signals,
   reads the time zone, selects the panel by build feature, and runs the event
   loop below. It also runs the control socket and the `ctl` client
@@ -99,6 +100,29 @@
   40 ms (`STEP`), the text moves 1 pixel to the left. Each pass goes from the
   right edge until the text is past the left edge. Its brightness comes from the legacy
   schedule. `Queue` holds at most 8 waiting messages, first in, first out.
+  `put_back` puts an interrupted message first, also above the limit.
+  `ScrollPath` holds the scroll math. Messages and alerts both use it.
+- **`effect`** (`gameclock_core::effect`, ADR-0018): the color wheel and the
+  contrast color. The wheel moves 3 of its 765 positions each 50 ms
+  (`WHEEL_STEP`). `contrast` gives black or white for a background color.
+- **`Alert`, `AlertScene`** (`gameclock_core::alert`, ADR-0018): an `Alert`
+  is static data. It has a name, a background (black or the color wheel), a
+  text, and a text style (font, baseline, color, still or scroll). It also
+  has a duration, a `Priority`, and a `ClearRule`. `BUILT_IN` holds `panic`, `bedtime`, and
+  `bed-flash`. `AlertScene` renders any alert. It finishes at the end of its
+  duration, or after its last pass if that is earlier. Its brightness comes
+  from the legacy schedule.
+- **`Trigger`, `Triggers`** (`gameclock_core::alert`, ADR-0018): a trigger
+  rule starts an alert each `every` from `from` to `to`, on its weekdays, in
+  local time. `Trigger::legacy()` is the bedtime warning. `Triggers` keeps
+  the next fire time of each rule. `due(now)` gives each alert that is due,
+  one for each rule, and `next()` gives the earliest next fire time.
+- **`Board`** (`gameclock_core::board`, ADR-0018): the message queue and the
+  item on the panel (nothing, a message, or an alert). It changes the
+  compositor stack, which holds at most one foreground scene. An alert starts
+  only above a lower priority: the base scene, `bed-flash`, a message,
+  `bedtime`, then `panic`. An interrupted message goes back to the front of
+  the queue. `clear` keeps an alert whose rule is `Kept`.
 - **`Heartbeat`**: the base scene in the test-pattern mode. It is the test
   pattern with one white pixel on row 1. The pixel moves one column each
   second. It uses full brightness.
@@ -111,10 +135,10 @@
   a shutdown or a command request. A request holds a `Command` and the sender
   for its reply line.
 - **`command`** (`gameclockd`): `parse_command` turns a line into a
-  `Command` (`clock`, `test-pattern`, `status`, `message`, or `clear`) or a
-  `CommandError`. The first word selects the command. `message` reads its
-  `--passes` and `--color` options, then takes the rest of the line as the
-  text. The reply text comes from pure functions.
+  `Command` (`clock`, `test-pattern`, `status`, `message`, `clear`, or
+  `alert`) or a `CommandError`. The first word selects the command. `message`
+  reads its `--passes` and `--color` options, then takes the rest of the line
+  as the text. `alert` takes a built-in alert name or `stop`. The reply text comes from pure functions.
 - **`control`** (`gameclockd`): `listen` makes the socket (mode 0600, a
   stale file is replaced, a live socket is not taken). The `control` thread
   accepts one connection at a time. It gives each client 1 s for its line and
@@ -152,22 +176,29 @@
    Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
    build with `hzeller` and `simulator` together stops with a compile error.
 5. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
-   an empty message `Queue`. Then it loops:
-   1. It gets the time from the clock and removes the finished scenes. If
-      no message shows, it starts the first message of the queue as a
-      `Scroll` at that time. Then it updates the compositor. So the next
-      message starts at the same update as the finish of the last one.
-   2. If the update gives a frame, it presents the frame at the brightness
-      that the update gives.
-   3. It waits until the compositor's deadline or an event. With no
-      deadline, the wait has no timeout.
-   4. For a command, it does the command and sends the reply. `clock` and
-      `test-pattern` replace the base scene and present it before the reply.
-      `status` gives the mode, the zone name, the last brightness, and the
-      number of messages. `message` starts the message and presents it, or
-      puts it in the queue. A full queue gives an error reply. `clear`
-      empties the queue, removes the message scene, and presents the base
-      scene before the reply.
+   a `Board` and the legacy `Triggers`. Then it loops:
+   1. It gets the time from the clock. The board removes the finished
+      scenes. If nothing shows, it starts the first message of the queue as
+      a `Scroll` at that time. So the next message starts at the same update
+      as the finish of the last one.
+   2. For each trigger rule that is due, it gives the alert to the board. A
+      refused trigger changes nothing.
+   3. It updates the compositor. If the update gives a frame, it presents
+      the frame at the brightness that the update gives.
+   4. It waits until the earlier of the compositor's deadline and the next
+      trigger time, or an event. With neither, the wait has no timeout.
+   5. For a command, it does the command and sends the reply. Each change
+      shows on the panel before the reply.
+      - `clock` and `test-pattern` replace the base scene.
+      - `status` gives the mode, the zone name, the last brightness, the
+        number of messages, and the alert on the panel.
+      - `message` starts the message, or puts it in the queue. A full queue
+        gives an error reply.
+      - `clear` empties the queue and removes the message, or an alert that
+        its rule permits.
+      - `alert <name>` starts the alert, or gives an error reply if the item
+        on the panel has the same or a higher priority. `alert stop` removes
+        the alert.
 6. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
    file, and the process exits 0. hzeller stops its refresh thread and
    blanks the LEDs. A panel error exits 1 with the message on stderr.
@@ -183,13 +214,14 @@ remove the socket file. The removal of the directory does that.
 
 ## Data flow
 
-1. The loop wakes at a deadline (the next visual change), on a command, or
-   on a stop signal.
+1. The loop wakes at a deadline (the next visual change or the next trigger
+   time), on a command, or on a stop signal.
 2. It gives the injected time to the compositor. The compositor renders the
    top scene into a `Frame`.
 3. If the frame or the brightness is different from the last presented
    ones, the loop calls `panel.present(frame, brightness)`.
-4. It gets the next deadline from the compositor and waits.
+4. It gets the next deadline from the compositor and the triggers, and
+   waits.
 
 The wait uses a duration. When the system clock steps (for example at the
 first NTP sync), the wake can be late by up to one interval (ADR-0013).
@@ -199,13 +231,13 @@ first NTP sync), the wake can be late by up to one interval (ADR-0013).
 A **scene** is a self-contained renderer with its own state. It reports when
 it next changes and when it finishes. It also gives its brightness
 (ADR-0012, ADR-0014). The daemon has one base scene: the clock, or the
-heartbeat in the test-pattern mode. A message is a foreground scene. At most
-one message is on the stack. The others wait in the queue of the loop
-(ADR-0017).
+heartbeat in the test-pattern mode. A message or an alert is a foreground
+scene. At most one foreground scene is on the stack. The board decides which
+one, and the other messages wait in its queue (ADR-0017, ADR-0018).
 
 The **compositor** decides what is visible: the base scene, or the newest
 foreground scene. Scenes never refer to each other.
 
-Planned: Panic and Bedtime become scenes. They will likely be configured
-instances of one alert capability, not special cases. Priorities, layers, and transitions are not
-in the compositor yet (see `roadmap.md`).
+Alerts are data of one type, and one alert scene renders each of them
+(ADR-0018). The priorities are in the board, not in the compositor. Layers
+and transitions are not in the compositor yet (see `roadmap.md`).
