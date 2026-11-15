@@ -469,7 +469,10 @@ mod tests {
             Some(start + SignedDuration::from_millis(1040))
         );
         assert_eq!(p.next_step(&at(12_480)), None);
-        assert_eq!(p.finish(), Some(start + SignedDuration::from_millis(12_480)));
+        assert_eq!(
+            p.finish(),
+            Some(start + SignedDuration::from_millis(12_480))
+        );
     }
 
     #[test]

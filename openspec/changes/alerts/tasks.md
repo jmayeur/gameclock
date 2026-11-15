@@ -8,8 +8,8 @@
 
 - [x] 2.1 Red: write `ScrollPath` tests for the 7×13 font, with the numbers of the `Scroll` tests. Also write them for the 10×20 font: x = 39 at T + 1 s, and the second pass at T + 12.2 s. See them fail because `ScrollPath` does not exist.
 - [x] 2.2 Green: move the scroll math from `Scroll` into `message::ScrollPath`, with the glyph width as an argument (design D3). Verify that the 2.1 tests and all earlier `message` tests pass with no change to them.
-- [ ] 2.3 Red: write `effect` tests: `wheel` at positions 0, 255, 256, 300, 501, 600, and 764. `wheel_position` at steps 0, 100, 167, 200, and 255 (wrap). `contrast` for `(0,0,255)`, `(211,44,0)`, and `(10,245,0)`, and for a color at exactly 145,000. See them fail.
-- [ ] 2.4 Green: add `gameclock_core::effect` with `WHEEL_STEP`, `wheel_position`, `wheel`, and `contrast` (D3). Verify that the 2.3 tests pass.
+- [x] 2.3 Red: write `effect` tests: `wheel` at positions 0, 255, 256, 300, 501, 600, and 764. `wheel_position` at steps 0, 100, 167, 200, and 255 (wrap). `contrast` for `(0,0,255)`, `(211,44,0)`, and `(10,245,0)`, and for a color at exactly 145,000. See them fail.
+- [x] 2.4 Green: add `gameclock_core::effect` with `WHEEL_STEP`, `wheel_position`, `wheel`, and `contrast` (D3). Verify that the 2.3 tests pass.
 
 ## 3. Alert definition and scene (`alerts`)
 

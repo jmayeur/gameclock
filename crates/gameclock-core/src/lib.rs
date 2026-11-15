@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod clock;
+pub mod effect;
 pub mod frame;
 pub mod heartbeat;
 pub mod message;
