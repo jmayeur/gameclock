@@ -17,8 +17,8 @@
 - [x] 3.2 Green: add `Alert`, `Background`, `TextStyle`, `TextColor`, `Motion`, `ClearRule`, `Priority`, the `panic` entry of `BUILT_IN`, and `AlertScene` (D1, D2). Verify that the 3.1 tests pass.
 - [x] 3.3 Red: write tests for "Bedtime text enters at the right edge" and "Second pass starts at the right edge". Also write "Duration ends the bedtime alert before its passes". Also write "Bed-flash frame", "Bed-flash next change is its finish", and "Two definitions with the same parts give the same frames". Also write "Panic at night" and "Bedtime on a bedtime night". Test `find` for each name and for an unknown name. See them fail.
 - [x] 3.4 Green: add the `bedtime` and `bed-flash` entries, the still and scroll motions, the brightness, and `find`. Verify that the 3.3 tests pass.
-- [ ] 3.5 Red: add a test to `tests/no_alloc.rs` for each built-in alert: update a compositor with the alert scene on the stack 1000 times, 40 ms apart. It must make zero heap allocations. If it passes at once, add a `String` clone to `render` for a short time and see it fail. Then remove the clone.
-- [ ] 3.6 Green: make the 3.5 tests pass with no allocation in `render`, `next_change`, `is_finished`, or `brightness`. Verify with `cargo test -p gameclock-core --test no_alloc`.
+- [x] 3.5 Red: add a test to `tests/no_alloc.rs` for each built-in alert: update a compositor with the alert scene on the stack 1000 times, spread evenly before the alert finishes. It must make zero heap allocations. It passed at once, so a `String` clone in `render` for a short time made it fail (panic). Then the clone was removed.
+- [x] 3.6 Green: make the 3.5 tests pass with no allocation in `render`, `next_change`, `is_finished`, or `brightness`. Verify with `cargo test -p gameclock-core --test no_alloc`.
 
 ## 4. Timed triggers (`alerts`)
 
