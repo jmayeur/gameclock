@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod alert;
 pub mod clock;
 pub mod effect;
 pub mod frame;
