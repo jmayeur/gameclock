@@ -2,7 +2,7 @@
 
 ## 1. ADR
 
-- [ ] 1.1 Write ADR-0018 (alerts are data, with priorities and timed triggers). Link ADR-0017, and add a link back from ADR-0017 under "Related" as a small note. Add ADR-0018 to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 1.1 Write ADR-0018 (alerts are data, with priorities and timed triggers). Link ADR-0017, and add a link back from ADR-0017 under "Related" as a small note. Add ADR-0018 to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
 
 ## 2. Shared parts: scroll path and effects (`alerts`, `message-board`)
 

@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-12
-- **Related:** ADR-0005, ADR-0006, ADR-0012, ADR-0014, ADR-0016. OpenSpec
+- **Related:** ADR-0005, ADR-0006, ADR-0012, ADR-0014, ADR-0016, ADR-0018. OpenSpec
   change `message-board`.
 
 ## Context
