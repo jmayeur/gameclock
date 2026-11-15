@@ -275,6 +275,12 @@ impl Queue {
         Ok(())
     }
 
+    /// Put `message` at the front of the queue. This is for a message that
+    /// an alert interrupted, so the limit does not apply (docs/adr/0018).
+    pub fn put_back(&mut self, message: Message) {
+        self.waiting.push_front(message);
+    }
+
     /// Remove the first message and give it.
     pub fn pop(&mut self) -> Option<Message> {
         self.waiting.pop_front()
@@ -579,5 +585,25 @@ mod tests {
         q.clear();
         assert_eq!(q.len(), 0);
         assert_eq!(q.pop(), None);
+    }
+
+    #[test]
+    fn put_back_puts_a_message_first() {
+        let mut q = Queue::new();
+        q.push(msg("two")).unwrap();
+        q.put_back(msg("one"));
+        assert_eq!(q.pop().map(|m| m.text().to_owned()), Some("one".into()));
+    }
+
+    #[test]
+    fn put_back_can_exceed_8() {
+        let mut q = Queue::new();
+        for n in 0..8 {
+            q.push(msg(&n.to_string())).unwrap();
+        }
+        q.put_back(msg("back"));
+        assert_eq!(q.len(), 9);
+        assert_eq!(q.push(msg("new")), Err(QueueFull));
+        assert_eq!(q.pop().map(|m| m.text().to_owned()), Some("back".into()));
     }
 }

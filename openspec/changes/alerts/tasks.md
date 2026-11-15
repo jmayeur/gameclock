@@ -27,10 +27,10 @@
 
 ## 5. Board (`alerts`, `message-board`)
 
-- [ ] 5.1 Red: write `Queue::put_back` tests: it puts a message first, also when 8 wait, and `push` then gives `QueueFull`. See them fail.
-- [ ] 5.2 Green: add `Queue::put_back`. Verify that the 5.1 tests pass.
-- [ ] 5.3 Red: write `Board` tests with a compositor and injected time for "Alert over the clock" and "Panic interrupts bedtime". Also write "Lower priority is refused", "Bed-flash does not interrupt a message", and "Same alert again". Also write "Message waits during an alert" and "Message restarts after panic". Also write "Interrupted message goes first" and "Interrupted message with a full queue". Also write "Clear removes panic", "Clear keeps bedtime", and "Clear during an alert that clear keeps". Also write "Stop an alert that clear keeps" and "Stop with no alert". Test `messages()` and `alert_name()`. See them fail because the `board` module does not exist.
-- [ ] 5.4 Green: add `Board` with `advance`, `message`, `alert`, `stop_alert`, `clear`, `messages`, `alert_name`, and the `Refused` error (D4). Verify that the 5.3 tests pass.
+- [x] 5.1 Red: write `Queue::put_back` tests: it puts a message first, also when 8 wait, and `push` then gives `QueueFull`. See them fail.
+- [x] 5.2 Green: add `Queue::put_back`. Verify that the 5.1 tests pass.
+- [x] 5.3 Red: write `Board` tests with a compositor and injected time for "Alert over the clock" and "Panic interrupts bedtime". Also write "Lower priority is refused", "Bed-flash does not interrupt a message", and "Same alert again". Also write "Message waits during an alert" and "Message restarts after panic". Also write "Interrupted message goes first" and "Interrupted message with a full queue". Also write "Clear removes panic", "Clear keeps bedtime", and "Clear during an alert that clear keeps". Also write "Stop an alert that clear keeps" and "Stop with no alert". Test `messages()` and `alert_name()`. See them fail because the `board` module does not exist.
+- [x] 5.4 Green: add `Board` with `advance`, `message`, `alert`, `stop_alert`, `clear`, `messages`, `alert_name`, and the `Refused` error (D4). Verify that the 5.3 tests pass.
 
 ## 6. Commands (`alerts`, `command-input`)
 
