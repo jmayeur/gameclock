@@ -36,6 +36,12 @@ impl TimeOfDay {
         Ok(Self(minutes))
     }
 
+    /// The minutes after midnight.
+    #[must_use]
+    pub const fn minutes(self) -> u16 {
+        self.0
+    }
+
     /// The whole minute of the day that contains `now`, in its time zone.
     #[must_use]
     pub fn of(now: &Zoned) -> Self {

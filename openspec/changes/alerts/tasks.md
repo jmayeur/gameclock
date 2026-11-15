@@ -22,8 +22,8 @@
 
 ## 4. Timed triggers (`alerts`)
 
-- [ ] 4.1 Red: write `Trigger` and `Triggers` tests in UTC for "Flash on a bedtime night" (fire times 23:00:00 and 23:00:10). Also write "No trigger on a Friday" and "Last trigger". Also write "Late wake" (one alert at 23:00:35, next time 23:00:40), and the first fire time at or after a start time inside a window. Test that `next()` at Monday 12:00:05 is Monday 23:00:00. See them fail.
-- [ ] 4.2 Green: add `Trigger`, `Trigger::legacy()`, and `Triggers` with `new`, `due`, and `next` (D5). Verify that the 4.1 tests pass.
+- [x] 4.1 Red: write `Trigger` and `Triggers` tests in UTC for "Flash on a bedtime night" (fire times 23:00:00 and 23:00:10). Also write "No trigger on a Friday" and "Last trigger". Also write "Late wake" (one alert at 23:00:35, next time 23:00:40), and the first fire time at or after a start time inside a window. Test that `next()` at Monday 12:00:05 is Monday 23:00:00. See them fail.
+- [x] 4.2 Green: add `Trigger`, `Trigger::legacy()`, and `Triggers` with `new`, `due`, and `next` (D5). Verify that the 4.1 tests pass.
 
 ## 5. Board (`alerts`, `message-board`)
 

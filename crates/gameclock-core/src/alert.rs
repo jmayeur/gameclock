@@ -6,11 +6,12 @@ use embedded_graphics::mono_font::{MonoFont, MonoTextStyle};
 use embedded_graphics::pixelcolor::Rgb888;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::{Baseline, Text};
+use jiff::civil::Weekday;
 use jiff::{SignedDuration, Timestamp, Zoned};
 
 use crate::effect::{WHEEL_STEP, contrast, wheel, wheel_position};
 use crate::message::ScrollPath;
-use crate::schedule::Schedule;
+use crate::schedule::{Schedule, TimeOfDay, Weekdays};
 use crate::{Brightness, Frame, Scene};
 
 /// The priority of an item on the panel. A higher value wins.
@@ -300,6 +301,153 @@ impl Scene for AlertScene {
     }
 }
 
+/// A rule that starts an alert at fixed times (docs/adr/0018).
+///
+/// The fire times are `from + k × every` that are before `to`, on each day
+/// in `days`, in the local time zone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Trigger {
+    /// The days of the rule.
+    pub days: Weekdays,
+    /// The first fire time of each day.
+    pub from: TimeOfDay,
+    /// The end of the window. No fire time is at or after it.
+    pub to: TimeOfDay,
+    /// The time between two fire times.
+    pub every: SignedDuration,
+    /// The alert to start.
+    pub alert: &'static Alert,
+}
+
+impl Trigger {
+    /// The legacy bedtime warning: on bedtime nights (Sunday to Thursday),
+    /// `bed-flash` each 10 s from 23:00 to 23:05, and `bedtime` each 10 s
+    /// from 23:05 to 23:16.
+    #[must_use]
+    pub fn legacy() -> Vec<Self> {
+        let bedtime_nights = Weekdays::of(&[
+            Weekday::Sunday,
+            Weekday::Monday,
+            Weekday::Tuesday,
+            Weekday::Wednesday,
+            Weekday::Thursday,
+        ]);
+        let every = SignedDuration::from_secs(10);
+        let table = [
+            ("bed-flash", (23, 0), (23, 5)),
+            ("bedtime", (23, 5), (23, 16)),
+        ];
+        table
+            .into_iter()
+            .filter_map(|(name, (fh, fm), (th, tm))| {
+                Some(Self {
+                    days: bedtime_nights,
+                    from: TimeOfDay::hm(fh, fm).ok()?,
+                    to: TimeOfDay::hm(th, tm).ok()?,
+                    every,
+                    alert: find(name)?,
+                })
+            })
+            .collect()
+    }
+
+    /// The first fire time at or after `now` (`after` is false), or after
+    /// `now` (`after` is true).
+    fn first(&self, now: &Zoned, after: bool) -> Option<Timestamp> {
+        if !self.every.is_positive() {
+            return None;
+        }
+        let now_ts = now.timestamp();
+        let mut date = now.date();
+        for _ in 0..=8 {
+            let day = date;
+            date = date.tomorrow().ok()?;
+            if !self.days.contains(day.weekday()) {
+                continue;
+            }
+            // The local time on `day`, with jiff's compatible conversion.
+            let at = |time: TimeOfDay| -> Option<Timestamp> {
+                let hour = i8::try_from(time.minutes() / 60).ok()?;
+                let minute = i8::try_from(time.minutes() % 60).ok()?;
+                let zoned = day.at(hour, minute, 0, 0).to_zoned(now.time_zone().clone());
+                zoned.ok().map(|z| z.timestamp())
+            };
+            let (Some(from), Some(to)) = (at(self.from), at(self.to)) else {
+                continue;
+            };
+            let mut candidate = if now_ts <= from {
+                from
+            } else {
+                let elapsed = now_ts.duration_since(from).as_nanos();
+                let k = elapsed.div_euclid(self.every.as_nanos());
+                let k = i32::try_from(k).ok()?;
+                from.checked_add(self.every.checked_mul(k)?).ok()?
+            };
+            if candidate < now_ts || (after && candidate == now_ts) {
+                candidate = candidate.checked_add(self.every).ok()?;
+            }
+            if candidate < to {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    /// The first fire time at or after `now`. `None` if the rule has no
+    /// fire time in the next 8 days.
+    #[must_use]
+    pub fn first_at_or_after(&self, now: &Zoned) -> Option<Timestamp> {
+        self.first(now, false)
+    }
+
+    /// The first fire time after `now`.
+    #[must_use]
+    pub fn first_after(&self, now: &Zoned) -> Option<Timestamp> {
+        self.first(now, true)
+    }
+}
+
+/// The trigger rules and the next fire time of each rule.
+#[derive(Debug, Clone)]
+pub struct Triggers {
+    rules: Vec<(Trigger, Option<Timestamp>)>,
+}
+
+impl Triggers {
+    /// The `rules`, with each next fire time at or after `now`.
+    #[must_use]
+    pub fn new(rules: Vec<Trigger>, now: &Zoned) -> Self {
+        let rules = rules
+            .into_iter()
+            .map(|r| {
+                let next = r.first_at_or_after(now);
+                (r, next)
+            })
+            .collect();
+        Self { rules }
+    }
+
+    /// The alerts of the rules whose next fire time is at or before `now`.
+    /// Each of these rules then gets the first fire time after `now`. A late
+    /// call so gives one alert for each rule, not one for each missed time.
+    pub fn due(&mut self, now: &Zoned) -> Vec<&'static Alert> {
+        let mut alerts = Vec::new();
+        for (rule, next) in &mut self.rules {
+            if next.is_some_and(|t| t <= now.timestamp()) {
+                alerts.push(rule.alert);
+                *next = rule.first_after(now);
+            }
+        }
+        alerts
+    }
+
+    /// The earliest next fire time of all rules.
+    #[must_use]
+    pub fn next(&self) -> Option<Timestamp> {
+        self.rules.iter().filter_map(|(_, next)| *next).min()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,6 +673,88 @@ mod tests {
         assert_eq!(
             s.brightness(&utc("2026-11-16T23:05:00Z")),
             Brightness::new(100)
+        );
+    }
+
+    // Timed triggers start the bedtime warning.
+
+    fn utc_ts(s: &str) -> Timestamp {
+        s.parse().unwrap()
+    }
+
+    fn triggers_at(s: &str) -> Triggers {
+        Triggers::new(Trigger::legacy(), &utc(s))
+    }
+
+    fn names(alerts: &[&'static Alert]) -> Vec<&'static str> {
+        alerts.iter().map(|a| a.name).collect()
+    }
+
+    // 2026-11-16 is a Monday. 2026-11-20 is a Friday.
+
+    #[test]
+    fn flash_on_a_bedtime_night() {
+        let mut t = triggers_at("2026-11-16T22:59:59Z");
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:00:00Z")));
+        assert_eq!(
+            names(&t.due(&utc("2026-11-16T22:59:59.999Z"))),
+            [] as [&str; 0]
+        );
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:00:00Z"))), ["bed-flash"]);
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:00:10Z")));
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:00:00Z"))), [] as [&str; 0]);
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:00:10Z"))), ["bed-flash"]);
+    }
+
+    #[test]
+    fn bedtime_follows_the_flash() {
+        let mut t = triggers_at("2026-11-16T23:04:55Z");
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:05:00Z")));
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:05:00Z"))), ["bedtime"]);
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:05:10Z")));
+    }
+
+    #[test]
+    fn no_trigger_on_a_friday() {
+        let t = triggers_at("2026-11-20T22:59:00Z");
+        // The next bedtime night is Sunday.
+        assert_eq!(t.next(), Some(utc_ts("2026-11-22T23:00:00Z")));
+    }
+
+    #[test]
+    fn last_trigger() {
+        let mut t = triggers_at("2026-11-16T23:15:45Z");
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:15:50Z")));
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:15:50Z"))), ["bedtime"]);
+        assert_eq!(t.next(), Some(utc_ts("2026-11-17T23:00:00Z")));
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:16:00Z"))), [] as [&str; 0]);
+    }
+
+    #[test]
+    fn late_wake() {
+        let mut t = triggers_at("2026-11-16T23:00:05Z");
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:00:10Z")));
+        assert_eq!(names(&t.due(&utc("2026-11-16T23:00:35Z"))), ["bed-flash"]);
+        assert_eq!(t.next(), Some(utc_ts("2026-11-16T23:00:40Z")));
+    }
+
+    #[test]
+    fn first_fire_time_inside_a_window() {
+        assert_eq!(
+            triggers_at("2026-11-16T23:00:10Z").next(),
+            Some(utc_ts("2026-11-16T23:00:10Z"))
+        );
+        assert_eq!(
+            triggers_at("2026-11-16T23:05:03Z").next(),
+            Some(utc_ts("2026-11-16T23:05:10Z"))
+        );
+    }
+
+    #[test]
+    fn next_trigger_at_noon() {
+        assert_eq!(
+            triggers_at("2026-11-16T12:00:05Z").next(),
+            Some(utc_ts("2026-11-16T23:00:00Z"))
         );
     }
 }
