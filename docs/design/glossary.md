@@ -59,12 +59,21 @@
   the HAT.
 - **Control socket**: the Unix stream socket of `gameclockd`, by default
   `/run/gameclockd/control.sock`, for root only (ADR-0016).
-- **Command**: one line on the control socket: `clock`, `test-pattern`, or
-  `status`. One connection carries one command.
+- **Command**: one line on the control socket: `clock`, `test-pattern`,
+  `status`, `message`, or `clear`. One connection carries one command.
 - **Reply**: the one line that the daemon sends back. It starts with `ok` or
   with `error: `.
 - **`ctl`**: the client in the same binary. `sudo gameclockd ctl status`
-  sends one command and writes the reply.
+  sends one command and writes the reply. It joins its command words with
+  one space, so a message needs no quotes.
+- **Message**: a text of 1 to 64 characters that scrolls across the panel,
+  with a pass count and a color (ADR-0017).
+- **Pass**: one scroll of a message, from the right edge until the text is
+  past the left edge.
+- **Scroll step**: the 40 ms in which a message moves 1 pixel to the left.
+  The position comes from the time, not from a count of renders.
+- **Message queue**: the messages that wait while a message shows. At most 8
+  wait, first in, first out. `clear` empties it.
 - **Event channel**: the channel that the loop waits on. The signal thread
   and the control thread send events to it (ADR-0016).
 - **Semaphore file**: the legacy command channel (`msg.txt` holding

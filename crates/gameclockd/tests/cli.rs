@@ -290,6 +290,16 @@ mod log_panel {
     }
 
     #[test]
+    fn message_through_the_client() {
+        let path = socket_in_temp_dir("message");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        let (code, out, _) = ctl(&[&socket_arg(&path), "message", "hello", "world"]);
+        assert_eq!(code, Some(0), "stdout: {out}");
+        assert_eq!(out, "ok\n");
+    }
+
+    #[test]
     fn error_reply_through_the_client() {
         let path = socket_in_temp_dir("error");
         let mut d = Daemon::spawn(&[&socket_arg(&path)]);

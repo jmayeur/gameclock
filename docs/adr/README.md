@@ -35,3 +35,4 @@ zero-padded) and add it to the index below.
 | [0014](0014-scene-brightness-and-schedule.md) | Scene brightness and the time-of-day schedule | Accepted |
 | [0015](0015-driver-settings-for-the-clock.md) | Driver settings for the clock: the PWM mapping and 8 PWM bits | Accepted |
 | [0016](0016-command-socket-and-event-channel.md) | Command input over a Unix socket, and an event channel for the loop | Accepted |
+| [0017](0017-messages-scroll-from-time-and-daemon-queue.md) | Messages scroll from the injected time, and the daemon owns the queue | Accepted |
