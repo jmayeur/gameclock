@@ -48,7 +48,7 @@
 
 ## 8. Simulator verification
 
-- [ ] 8.1 Run the `simulator` build and send `alert panic`, `alert bedtime`, and `alert bed-flash`. Verify by eye that the terminal shows the wheel with the contrast text, the large scroll, and the red flash.
+- [x] 8.1 Run the `simulator` build and send `alert panic`, `alert bedtime`, and `alert bed-flash`. Verify the terminal output: the colors of the wheel with the contrast text, the lime scroll, and the red flash. The agent read the 24-bit colors from the captured output: 183 wheel colors with white and black text, lime `(50,205,50)`, and red `(255,0,0)`. Task 9.2 is the look at the panel.
 
 ## 9. On-device verification and measurements
 
