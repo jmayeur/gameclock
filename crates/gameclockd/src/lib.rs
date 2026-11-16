@@ -15,7 +15,9 @@ pub mod control;
 pub mod http;
 pub mod web;
 
-use command::{Command, OK, no_alert_name_reply, status_reply, unknown_alert_reply};
+use command::{
+    Command, OK, alert_names_reply, no_alert_name_reply, status_reply, unknown_alert_reply,
+};
 use config::{ConfigError, Origin};
 
 use gameclock_core::alert::Triggers;
@@ -283,6 +285,7 @@ pub fn run<P: Panel>(
                         }
                         Err(e) => format!("error: {e}"),
                     },
+                    Command::AlertNames => alert_names_reply(&alerts),
                     Command::StopAlert => {
                         board.stop_alert(&now, &mut compositor);
                         present(panel, &mut compositor, &now)?;
@@ -1636,6 +1639,38 @@ mod tests {
             r2.try_recv().unwrap(),
             "error: unknown alert 'panic'. The alerts are dinner."
         );
+    }
+
+    // The alert names for the web page (`openspec/specs/web-control`).
+
+    #[test]
+    fn alert_names_in_the_loop() {
+        let (step, reply) = command_at(T1, Command::AlertNames);
+        run_clock(vec![step]);
+        assert_eq!(reply.try_recv().unwrap(), "ok panic bedtime bed-flash");
+    }
+
+    #[test]
+    fn alert_names_after_a_reload() {
+        let dinner = Alert {
+            name: "dinner".to_owned(),
+            ..(*Alerts::legacy().find("bed-flash").unwrap()).clone()
+        };
+        let only_dinner = Tables {
+            alerts: Alerts::new(vec![dinner]).unwrap(),
+            triggers: Vec::new(),
+            ..Tables::legacy()
+        };
+        let (reload, _r1) = command_at(T1, Command::Reload);
+        let (names, r2) = command_at(after_t1(100), Command::AlertNames);
+        run_reloads(
+            START,
+            legacy_clock(),
+            Mode::Clock,
+            vec![Ok(only_dinner)],
+            vec![reload, names],
+        );
+        assert_eq!(r2.try_recv().unwrap(), "ok dinner");
     }
 
     // Alerts and timed triggers (`openspec/specs/alerts`).

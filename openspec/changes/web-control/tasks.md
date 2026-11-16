@@ -27,8 +27,8 @@
 
 ## 4. The loop (`web-control`)
 
-- [ ] 4.1 Red: write a `run` test for `Command::AlertNames` with the built-in tables (`ok panic bedtime bed-flash`) and for "Page after a reload" (`ok dinner`). Write a `parse_command` test that the text `alert-names` and similar words are not a command. See them fail.
-- [ ] 4.2 Green: add `Command::AlertNames` and its reply in the loop. The socket parser cannot make it. Verify that the 4.1 tests and all earlier tests pass.
+- [x] 4.1 Red: write a `run` test for `Command::AlertNames` with the built-in tables (`ok panic bedtime bed-flash`) and for "Page after a reload" (`ok dinner`). Write a `parse_command` test that the text `alert-names` and similar words are not a command. See them fail. The two `run` tests failed. The parser test passed at once, because the parser has no such word. It guards the socket protocol. Group 4 came before 3.3, because the routes need `Command::AlertNames`.
+- [x] 4.2 Green: add `Command::AlertNames` and its reply in the loop. The socket parser cannot make it. Verify that the 4.1 tests and all earlier tests pass.
 
 ## 5. Arguments, the listener, and start (`daemon-lifecycle`, `web-control`)
 

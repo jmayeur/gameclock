@@ -45,6 +45,9 @@ pub enum Command {
     StopAlert,
     /// Read the config file again (docs/adr/0019).
     Reload,
+    /// Give the names of the current alerts. Only the web thread sends this
+    /// command. The socket parser cannot make it (docs/adr/0020).
+    AlertNames,
 }
 
 /// A command line that is not a command.
@@ -194,6 +197,18 @@ pub fn unknown_alert_reply(name: &str, alerts: &Alerts) -> String {
     )
 }
 
+/// The reply to [`Command::AlertNames`]: `ok` and the names of `alerts`,
+/// with one space between them.
+#[must_use]
+pub fn alert_names_reply(alerts: &Alerts) -> String {
+    let mut reply = OK.to_owned();
+    for alert in alerts.iter() {
+        reply.push(' ');
+        reply.push_str(&alert.name);
+    }
+    reply
+}
+
 /// The reply to `status`. `messages` is the number of messages on the panel
 /// and in the queue. `alert` is the name of the alert on the panel.
 #[must_use]
@@ -253,6 +268,23 @@ mod tests {
             "",
         ] {
             assert!(parse_command(text.as_bytes()).is_err(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn alert_names_is_not_a_socket_command() {
+        for text in [
+            "alert-names",
+            "alertnames",
+            "AlertNames",
+            "alert_names",
+            "names",
+        ] {
+            assert_eq!(
+                parse_command(text.as_bytes()),
+                Err(CommandError::Unknown(text.into())),
+                "{text:?}"
+            );
         }
     }
 
