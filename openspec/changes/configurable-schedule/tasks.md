@@ -56,12 +56,12 @@
 
 ## 9. On-device verification and measurements
 
-- [ ] 9.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against `main` in `openspec/changes/configurable-schedule/measurements.md`.
-- [ ] 9.2 Deploy with `scripts/deploy.sh`. Verify that `/etc/gameclockd/config.toml` exists with mode 0644, and that the panel shows the clock as before. Ask the user to look at the panel.
-- [ ] 9.3 Run "Idle clock with a config file": `scripts/measure.sh` for 60 s with the clock only. Record CPU, voluntary context switches, and RSS.
-- [ ] 9.4 Run "Reload time on the Pi": time `sudo gameclockd ctl reload` 5 times. Record the median. Then edit the file on the Pi to a different color, send `reload`, and ask the user to look at the panel. Restore the file, send `reload`, and run the deploy again to verify "Deploy keeps an edited config".
-- [ ] 9.5 Run "A config error is not restarted": put an error in the file, and restart the service. Verify the exit status 2, that systemd does not restart it, and the error in `journalctl`. Restore the file and start the service.
-- [ ] 9.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
+- [x] 9.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against `main` in `openspec/changes/configurable-schedule/measurements.md`.
+- [x] 9.2 Deploy with `scripts/deploy.sh`. Verify that `/etc/gameclockd/config.toml` exists with mode 0644, and that the panel shows the clock as before. Ask the user to look at the panel.
+- [x] 9.3 Run "Idle clock with a config file": `scripts/measure.sh` for 60 s with the clock only. Record CPU, voluntary context switches, and RSS.
+- [x] 9.4 Run "Reload time on the Pi": time `sudo gameclockd ctl reload` 5 times. Record the median. Then edit the file on the Pi to a different color, send `reload`, and ask the user to look at the panel. Restore the file, send `reload`, and run the deploy again to verify "Deploy keeps an edited config".
+- [x] 9.5 Run "A config error is not restarted": put an error in the file, and restart the service. Verify the exit status 2, that systemd does not restart it, and the error in `journalctl`. Restore the file and start the service.
+- [x] 9.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 10. Docs and final verification
 
