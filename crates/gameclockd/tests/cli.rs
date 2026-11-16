@@ -300,6 +300,22 @@ mod log_panel {
     }
 
     #[test]
+    fn alert_through_the_client() {
+        let path = socket_in_temp_dir("alert");
+        let mut d = Daemon::spawn(&[&socket_arg(&path)]);
+        d.wait_for(READY);
+        let (code, out, _) = ctl(&[&socket_arg(&path), "alert", "panic"]);
+        assert_eq!(code, Some(0), "stdout: {out}");
+        assert_eq!(out, "ok\n");
+        let (code, out, _) = ctl(&[&socket_arg(&path), "alert", "fire"]);
+        assert_eq!(code, Some(1));
+        assert_eq!(
+            out,
+            "error: unknown alert 'fire'. The alerts are panic, bedtime, and bed-flash.\n"
+        );
+    }
+
+    #[test]
     fn error_reply_through_the_client() {
         let path = socket_in_temp_dir("error");
         let mut d = Daemon::spawn(&[&socket_arg(&path)]);

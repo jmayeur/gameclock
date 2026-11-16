@@ -6,6 +6,7 @@
 use core::fmt;
 
 use gameclock_core::Brightness;
+use gameclock_core::alert::{Alert, BUILT_IN, find};
 use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
 use gameclock_core::message::{Message, MessageError};
 use jiff::tz::TimeZone;
@@ -33,8 +34,14 @@ pub enum Command {
     Status,
     /// Show the message, or put it in the queue (docs/adr/0017).
     Message(Message),
-    /// Empty the queue, and remove the message on the panel.
+    /// Empty the queue, and remove the message on the panel. Remove the
+    /// alert on the panel if its clear rule permits it (docs/adr/0018).
     Clear,
+    /// Start the alert, if its priority is higher than the item on the
+    /// panel.
+    Alert(&'static Alert),
+    /// Remove the alert on the panel.
+    StopAlert,
 }
 
 /// A command line that is not a command.
@@ -56,6 +63,10 @@ pub enum CommandError {
     Color,
     /// A `message` option that is not `--passes` or `--color`.
     UnknownOption(String),
+    /// An `alert` command with no name.
+    NoAlertName,
+    /// An `alert` name that is not a built-in alert.
+    UnknownAlert(String),
 }
 
 impl CommandError {
@@ -73,7 +84,7 @@ impl fmt::Display for CommandError {
             Self::NotUtf8 => f.write_str("the command is not UTF-8 text."),
             Self::Unknown(name) => write!(
                 f,
-                "unknown command '{name}'. The commands are clock, test-pattern, status, message, and clear."
+                "unknown command '{name}'. The commands are clock, test-pattern, status, message, clear, and alert."
             ),
             Self::NoText => f.write_str("the message has no text."),
             Self::TextTooLong => write!(
@@ -93,11 +104,37 @@ impl fmt::Display for CommandError {
                 f,
                 "unknown message option '{option}'. The options are --passes and --color."
             ),
+            Self::NoAlertName => write!(
+                f,
+                "the alert command has no name. The alerts are {AlertNames}."
+            ),
+            Self::UnknownAlert(name) => {
+                write!(f, "unknown alert '{name}'. The alerts are {AlertNames}.")
+            }
         }
     }
 }
 
 impl std::error::Error for CommandError {}
+
+/// The names of the built-in alerts as a list, for example `a, b, and c`.
+struct AlertNames;
+
+impl fmt::Display for AlertNames {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let count = BUILT_IN.len();
+        for (n, alert) in BUILT_IN.iter().enumerate() {
+            match n {
+                0 => {}
+                _ if n + 1 == count && count == 2 => f.write_str(" and ")?,
+                _ if n + 1 == count => f.write_str(", and ")?,
+                _ => f.write_str(", ")?,
+            }
+            f.write_str(alert.name)?;
+        }
+        Ok(())
+    }
+}
 
 /// Parse one command line, without its line feed. Spaces at the start and
 /// the end do not count.
@@ -114,6 +151,15 @@ pub fn parse_command(line: &[u8]) -> Result<Command, CommandError> {
     let (word, rest) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
     if word == "message" {
         return parse_message(rest).map(Command::Message);
+    }
+    if word == "alert" {
+        return match rest.trim() {
+            "" => Err(CommandError::NoAlertName),
+            "stop" => Ok(Command::StopAlert),
+            name => find(name)
+                .map(Command::Alert)
+                .ok_or_else(|| CommandError::UnknownAlert(name.to_owned())),
+        };
     }
     match text {
         "clock" => Ok(Command::Mode(Mode::Clock)),
@@ -159,17 +205,19 @@ fn parse_color(value: &str) -> Option<Rgb888> {
 }
 
 /// The reply to `status`. `messages` is the number of messages on the panel
-/// and in the queue.
+/// and in the queue. `alert` is the name of the alert on the panel.
 #[must_use]
 pub fn status_reply(
     mode: Mode,
     zone: &TimeZone,
     brightness: Brightness,
     messages: usize,
+    alert: Option<&str>,
 ) -> String {
     let zone = zone.iana_name().unwrap_or("unnamed");
+    let alert = alert.unwrap_or("none");
     format!(
-        "ok mode={} zone={zone} brightness={} messages={messages}",
+        "ok mode={} zone={zone} brightness={} messages={messages} alert={alert}",
         mode.name(),
         brightness.percent()
     )
@@ -200,7 +248,7 @@ mod tests {
         assert_eq!(err, CommandError::Unknown("frobnicate".into()));
         assert_eq!(
             err.reply(),
-            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, and clear."
+            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, and alert."
         );
     }
 
@@ -221,6 +269,42 @@ mod tests {
     #[test]
     fn clear_parses() {
         assert_eq!(parse_command(b"clear"), Ok(Command::Clear));
+    }
+
+    // The alert command.
+
+    #[test]
+    fn built_in_alerts_parse() {
+        for name in ["panic", "bedtime", "bed-flash"] {
+            let line = format!("alert {name}");
+            assert_eq!(
+                parse_command(line.as_bytes()),
+                Ok(Command::Alert(gameclock_core::alert::find(name).unwrap())),
+                "{line}"
+            );
+        }
+        assert_eq!(parse_command(b"alert stop"), Ok(Command::StopAlert));
+    }
+
+    #[test]
+    fn alert_with_no_name() {
+        assert_eq!(parse_command(b"alert"), Err(CommandError::NoAlertName));
+        assert_eq!(
+            reply("alert  "),
+            "error: the alert command has no name. The alerts are panic, bedtime, and bed-flash."
+        );
+    }
+
+    #[test]
+    fn unknown_alert() {
+        assert_eq!(
+            reply("alert fire"),
+            "error: unknown alert 'fire'. The alerts are panic, bedtime, and bed-flash."
+        );
+        assert_eq!(
+            parse_command(b"alert fire now"),
+            Err(CommandError::UnknownAlert("fire now".into()))
+        );
     }
 
     // The message command.
@@ -367,30 +451,48 @@ mod tests {
 
     #[test]
     fn status_of_the_clock() {
-        let reply = status_reply(Mode::Clock, &TimeZone::UTC, Brightness::new(25), 0);
-        assert_eq!(reply, "ok mode=clock zone=UTC brightness=25 messages=0");
+        let reply = status_reply(Mode::Clock, &TimeZone::UTC, Brightness::new(25), 0, None);
+        assert_eq!(
+            reply,
+            "ok mode=clock zone=UTC brightness=25 messages=0 alert=none"
+        );
     }
 
     #[test]
     fn status_of_the_test_pattern() {
-        let reply = status_reply(Mode::TestPattern, &TimeZone::UTC, Brightness::MAX, 0);
+        let reply = status_reply(Mode::TestPattern, &TimeZone::UTC, Brightness::MAX, 0, None);
         assert_eq!(
             reply,
-            "ok mode=test-pattern zone=UTC brightness=100 messages=0"
+            "ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none"
         );
     }
 
     #[test]
     fn status_with_an_unnamed_zone() {
         let zone = TimeZone::fixed(jiff::tz::offset(2));
-        let reply = status_reply(Mode::Clock, &zone, Brightness::new(60), 0);
-        assert_eq!(reply, "ok mode=clock zone=unnamed brightness=60 messages=0");
+        let reply = status_reply(Mode::Clock, &zone, Brightness::new(60), 0, None);
+        assert_eq!(
+            reply,
+            "ok mode=clock zone=unnamed brightness=60 messages=0 alert=none"
+        );
     }
 
     #[test]
     fn status_with_three_messages() {
-        let reply = status_reply(Mode::Clock, &TimeZone::UTC, Brightness::new(60), 3);
-        assert!(reply.ends_with(" messages=3"), "{reply}");
+        let reply = status_reply(Mode::Clock, &TimeZone::UTC, Brightness::new(60), 3, None);
+        assert!(reply.ends_with(" messages=3 alert=none"), "{reply}");
+    }
+
+    #[test]
+    fn status_during_an_alert() {
+        let reply = status_reply(
+            Mode::Clock,
+            &TimeZone::UTC,
+            Brightness::new(60),
+            2,
+            Some("panic"),
+        );
+        assert!(reply.ends_with(" messages=2 alert=panic"), "{reply}");
     }
 
     #[test]

@@ -104,9 +104,10 @@ for the current time. The base scene does not change this.
 - **THEN** the compositor gives the brightness 25
 
 ### Requirement: Messages wait in a queue
-If no message is on the panel, a new message SHALL start at once. Otherwise
-it SHALL wait in a queue. When a message finishes, the first message in the
-queue SHALL start at the same update. At most 8 messages SHALL wait.
+If no message and no alert is on the panel, a new message SHALL start at
+once. Otherwise it SHALL wait in a queue. When a message or an alert
+finishes, the first message in the queue SHALL start at the same update. At
+most 8 messages SHALL wait.
 
 #### Scenario: First message starts at once
 - **WHEN** the daemon shows the clock, and `message hello` arrives at time T
@@ -129,9 +130,15 @@ queue SHALL start at the same update. At most 8 messages SHALL wait.
 - **WHEN** one message scrolls, 8 messages wait, and one more `message` command arrives
 - **THEN** the reply is `error: the message queue is full. 8 messages wait.`
 
+#### Scenario: Message waits during an alert
+- **WHEN** `panic` shows, and `message hello` arrives
+- **THEN** the reply is `ok`, and `panic` continues with no change
+- **AND** the update at the finish of `panic` gives the first frame of `hello`
+
 ### Requirement: The clear command removes all messages
 The command `clear` SHALL empty the queue and remove the message on the
-panel. The daemon SHALL present the base scene before it replies `ok`.
+panel. It SHALL remove an alert only if the alert's clear rule permits it.
+The daemon SHALL present the next image before it replies `ok`.
 
 #### Scenario: Clear during a message
 - **WHEN** one message scrolls, two messages wait, and `clear` arrives
@@ -142,6 +149,11 @@ panel. The daemon SHALL present the base scene before it replies `ok`.
 - **WHEN** no message is on the panel, and `clear` arrives
 - **THEN** the reply is `ok`, and the daemon does not present
 
+#### Scenario: Clear during an alert that clear keeps
+- **WHEN** `bedtime` shows, one message waits, and `clear` arrives
+- **THEN** the reply is `ok`, and the daemon does not present
+- **AND** no message shows after `bedtime` finishes
+
 ### Requirement: A message scroll stays in its frame budget (on-device)
 While a message scrolls on the Pi Zero W, the main thread SHALL use 15% CPU or
 less. The median refresh rate SHALL stay at 170 Hz or more.
@@ -150,3 +162,22 @@ less. The median refresh rate SHALL stay at 170 Hz or more.
 - **WHEN** the `gameclockd` service scrolls a message of 64 characters with 10 passes, and `scripts/measure.sh` runs for 60 s
 - **THEN** the main thread CPU is 15% or less
 - **AND** the median refresh rate with `--led-show-refresh` during a scroll is 170 Hz or more
+
+### Requirement: An interrupted message restarts
+When an alert interrupts a message, the message SHALL go back to the front
+of the queue. It SHALL start again from the right edge, with all its passes,
+when no alert shows. This SHALL also apply when 8 messages wait.
+
+#### Scenario: Message restarts after panic
+- **WHEN** the message `HI` starts at time T, and `panic` starts at T + 1 s
+- **THEN** the update at T + 21 s gives a black frame, and the message is not finished
+- **AND** the frame at T + 21.04 s is the text `HI` drawn at x = 63, baseline y = 20
+
+#### Scenario: Interrupted message goes first
+- **WHEN** `one` scrolls, `two` waits, and `panic` interrupts `one`
+- **THEN** `one` starts when `panic` finishes, and `two` starts after `one`
+
+#### Scenario: Interrupted message with a full queue
+- **WHEN** one message scrolls, 8 messages wait, and `panic` interrupts it
+- **THEN** 9 messages wait, and the interrupted message is first
+- **AND** a new `message` command gets the reply `error: the message queue is full. 8 messages wait.`

@@ -79,7 +79,7 @@ brightness. The first update SHALL always give a frame.
 ### Requirement: The deadline is the top scene's next change
 After an update, the compositor SHALL give the top scene's next change time as
 its deadline. A scene with no next change SHALL give no deadline. The daemon
-then waits with no timeout.
+then waits until the next trigger time (`alerts`).
 
 #### Scenario: Static scene has no deadline
 - **WHEN** a compositor with a base scene that has no next change is updated at 12:00:00 UTC

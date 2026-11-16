@@ -14,9 +14,10 @@ pub mod control;
 
 use command::{Command, OK, status_reply};
 
+use gameclock_core::alert::{Trigger, Triggers};
+use gameclock_core::board::Board;
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
-use gameclock_core::message::{Queue, Scroll};
 use gameclock_core::schedule::Schedule;
 use gameclock_core::{Brightness, Compositor, Frame, Panel, Scene};
 use jiff::tz::TimeZone;
@@ -171,10 +172,11 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 ///
 /// The loop renders `base` for the current time and presents each changed
 /// frame on `panel` at the brightness of the top scene. Then it waits until
-/// the next scene change or an event. It does not wake at other times. A
-/// command runs at once, and its reply goes back on its sender. `mode` is
-/// the mode of `base`, for `status`. Messages wait in a queue and show one at
-/// a time on top of the base scene (docs/adr/0017).
+/// the next scene change, the next trigger time, or an event. It does not
+/// wake at other times. A command runs at once, and its reply goes back on
+/// its sender. `mode` is the mode of `base`, for `status`. The board shows
+/// messages and alerts on top of the base scene (docs/adr/0017,
+/// docs/adr/0018).
 ///
 /// # Errors
 /// [`RunError::Present`] if the panel fails to show a frame.
@@ -187,40 +189,70 @@ pub fn run<P: Panel>(
 ) -> Result<(), RunError<P::Error>> {
     let (width, height) = panel.dimensions();
     let mut compositor = Compositor::new(base, width, height);
-    let mut queue = Queue::new();
+    let mut board = Board::new(width, Schedule::legacy());
+    let mut triggers = Triggers::new(Trigger::legacy(), &clock.now());
     loop {
         let now = clock.now();
-        show(panel, &mut compositor, &mut queue, &now)?;
-        match wait.wait(compositor.deadline(&now), now.timestamp()) {
+        board.advance(&now, &mut compositor);
+        for alert in triggers.due(&now) {
+            // A refused trigger changes nothing (docs/adr/0018).
+            let _ = board.alert(alert, &now, &mut compositor);
+        }
+        present(panel, &mut compositor, &now)?;
+        let deadline = match (compositor.deadline(&now), triggers.next()) {
+            (Some(scene), Some(trigger)) => Some(scene.min(trigger)),
+            (scene, trigger) => scene.or(trigger),
+        };
+        match wait.wait(deadline, now.timestamp()) {
             Wake::Deadline => {}
             Wake::Shutdown => return Ok(()),
             Wake::Command(Request { command, reply }) => {
                 // Each change shows on the panel before the reply.
+                let now = clock.now();
                 let text = match command {
                     Command::Mode(next) => {
                         if next != mode {
                             mode = next;
                             compositor.set_base(next.base_scene());
-                            show(panel, &mut compositor, &mut queue, &clock.now())?;
+                            board.advance(&now, &mut compositor);
+                            present(panel, &mut compositor, &now)?;
                         }
                         OK.to_owned()
                     }
                     Command::Status => {
-                        let messages = queue.len() + compositor.foreground_len();
-                        let zone = clock.now().time_zone().clone();
-                        status_reply(mode, &zone, compositor.last_brightness(), messages)
+                        let zone = now.time_zone().clone();
+                        status_reply(
+                            mode,
+                            &zone,
+                            compositor.last_brightness(),
+                            board.messages(),
+                            board.alert_name(),
+                        )
                     }
-                    Command::Message(message) => match queue.push(message) {
+                    Command::Message(message) => {
+                        match board.message(message, &now, &mut compositor) {
+                            Ok(()) => {
+                                present(panel, &mut compositor, &now)?;
+                                OK.to_owned()
+                            }
+                            Err(full) => format!("error: {full}"),
+                        }
+                    }
+                    Command::Clear => {
+                        board.clear(&now, &mut compositor);
+                        present(panel, &mut compositor, &now)?;
+                        OK.to_owned()
+                    }
+                    Command::Alert(alert) => match board.alert(alert, &now, &mut compositor) {
                         Ok(()) => {
-                            show(panel, &mut compositor, &mut queue, &clock.now())?;
+                            present(panel, &mut compositor, &now)?;
                             OK.to_owned()
                         }
-                        Err(full) => format!("error: {full}"),
+                        Err(refused) => format!("error: {refused}"),
                     },
-                    Command::Clear => {
-                        queue.clear();
-                        compositor.clear_foreground();
-                        show(panel, &mut compositor, &mut queue, &clock.now())?;
+                    Command::StopAlert => {
+                        board.stop_alert(&now, &mut compositor);
+                        present(panel, &mut compositor, &now)?;
                         OK.to_owned()
                     }
                 };
@@ -231,23 +263,12 @@ pub fn run<P: Panel>(
     }
 }
 
-/// Remove the finished scenes. If no message shows, start the first message
-/// of the queue at `now`. Then render, and present a changed frame
-/// (docs/adr/0017).
-fn show<P: Panel>(
+/// Render, and present a changed frame.
+fn present<P: Panel>(
     panel: &mut P,
     compositor: &mut Compositor,
-    queue: &mut Queue,
     now: &Zoned,
 ) -> Result<(), RunError<P::Error>> {
-    compositor.remove_finished(now);
-    if compositor.foreground_len() == 0
-        && let Some(message) = queue.pop()
-    {
-        let (width, _) = panel.dimensions();
-        let scroll = Scroll::new(message, now.timestamp(), width, Schedule::legacy());
-        compositor.push(Box::new(scroll));
-    }
     if let Some((frame, brightness)) = compositor.update(now) {
         panel
             .present(frame, brightness)
@@ -487,6 +508,7 @@ mod tests {
     use std::sync::mpsc;
 
     use crate::command::{Command, OK};
+    use gameclock_core::alert::AlertScene;
     use gameclock_core::message::{Message, Scroll};
 
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
@@ -920,11 +942,12 @@ mod tests {
     }
 
     #[test]
-    fn static_scene_waits_with_no_timeout() {
+    fn static_scene_waits_until_the_next_trigger() {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, []);
         run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
-        assert_eq!(wait.deadlines, vec![None]);
+        // START is a Thursday, a bedtime night (`openspec/specs/alerts`).
+        assert_eq!(wait.deadlines, vec![Some(ts("1970-01-01T23:00:00Z"))]);
         assert_eq!(panel.presents.len(), 1);
     }
 
@@ -955,7 +978,8 @@ mod tests {
             Command::Status,
         );
         assert!(reply.starts_with("ok"), "{reply}");
-        assert_eq!(wait.deadlines, vec![None, None]);
+        let trigger = Some(ts("1970-01-01T23:00:00Z"));
+        assert_eq!(wait.deadlines, vec![trigger, trigger]);
         assert_eq!(panel.presents.len(), 1);
     }
 
@@ -1004,7 +1028,10 @@ mod tests {
     #[test]
     fn status_of_the_clock() {
         let (_, _, reply) = run_command(legacy_clock(), Mode::Clock, START, Command::Status);
-        assert_eq!(reply, "ok mode=clock zone=UTC brightness=25 messages=0");
+        assert_eq!(
+            reply,
+            "ok mode=clock zone=UTC brightness=25 messages=0 alert=none"
+        );
     }
 
     #[test]
@@ -1017,7 +1044,7 @@ mod tests {
         );
         assert_eq!(
             reply,
-            "ok mode=test-pattern zone=UTC brightness=100 messages=0"
+            "ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none"
         );
     }
 
@@ -1187,7 +1214,7 @@ mod tests {
         let (status, reply) = command_at(after_t1(100), Command::Status);
         run_clock(vec![one, two, three, status]);
         let reply = reply.try_recv().unwrap();
-        assert!(reply.ends_with(" messages=3"), "{reply}");
+        assert!(reply.ends_with(" messages=3 alert=none"), "{reply}");
     }
 
     #[test]
@@ -1197,6 +1224,137 @@ mod tests {
         assert_eq!(reply, OK);
         assert_eq!(panel.presents[0].1, Brightness::MAX);
         assert_eq!(panel.presents[1].1, Brightness::new(25));
+    }
+
+    // Alerts and timed triggers (`openspec/specs/alerts`).
+
+    fn alert(name: &str) -> Command {
+        Command::Alert(gameclock_core::alert::find(name).unwrap())
+    }
+
+    /// The frame of the alert `name` that starts at `start`, at the time `at`.
+    fn alert_frame(name: &str, start: &str, at: &str) -> Frame {
+        let a = gameclock_core::alert::find(name).unwrap();
+        let mut scene = AlertScene::new(a, ts(start), 64, Schedule::legacy());
+        let mut f = Frame::new(64, 32);
+        scene.render(&ts(at).to_zoned(TimeZone::UTC), &mut f);
+        f
+    }
+
+    fn run_clock_from(start: &str, steps: Vec<Step>) -> (Recorder, ScriptedWait) {
+        let mut panel = Recorder::new(64, 32);
+        let (clock, mut wait) = script(start, steps);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        (panel, wait)
+    }
+
+    #[test]
+    fn alert_over_the_clock() {
+        let (tx, rx) = mpsc::channel();
+        let replies = Rc::new(rx);
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::clone(&replies),
+            reply_before_present: Vec::new(),
+        };
+        let (clock, mut wait) = script(START, [Step::CommandAt(T1, alert("panic"), tx)]);
+        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        assert_eq!(panel.reply_before_present, vec![false, false]);
+        assert_eq!(replies.try_recv().as_deref(), Ok(OK));
+        assert_eq!(panel.inner.presents[1].0, alert_frame("panic", T1, T1));
+    }
+
+    #[test]
+    fn alert_command_errors() {
+        let (one, _r1) = command_at(T1, message("one", 4));
+        let (flash, r2) = command_at(after_t1(100), alert("bed-flash"));
+        let (stop, r3) = command_at(after_t1(200), Command::StopAlert);
+        run_clock(vec![one, flash, stop]);
+        assert_eq!(
+            r2.try_recv().unwrap(),
+            "error: the alert 'bed-flash' did not start. A message on the panel has the same or a higher priority."
+        );
+        assert_eq!(r3.try_recv().as_deref(), Ok(OK));
+    }
+
+    #[test]
+    fn status_during_an_alert() {
+        let (one, _r1) = command_at(T1, message("one", 4));
+        let (two, _r2) = command_at(T1, message("two", 4));
+        let (panic, _r3) = command_at(after_t1(100), alert("panic"));
+        let (status, reply) = command_at(after_t1(200), Command::Status);
+        run_clock(vec![one, two, panic, status]);
+        let reply = reply.try_recv().unwrap();
+        assert!(reply.ends_with(" messages=2 alert=panic"), "{reply}");
+    }
+
+    // 2026-11-16 is a Monday.
+
+    #[test]
+    fn wake_before_the_next_minute() {
+        let (_, wait) = run_clock_from("2026-11-16T23:00:05Z", vec![]);
+        assert_eq!(wait.deadlines[0], Some(ts("2026-11-16T23:00:10Z")));
+    }
+
+    #[test]
+    fn no_early_wake_outside_a_window() {
+        let (_, wait) = run_clock_from("2026-11-16T12:00:05Z", vec![]);
+        assert_eq!(wait.deadlines[0], Some(ts("2026-11-16T12:01:00Z")));
+    }
+
+    #[test]
+    fn bedtime_alert_repeats_with_no_gap() {
+        let steps = vec![
+            Step::Deadline,
+            Step::EarlyAt("2026-11-16T23:05:10Z"),
+            Step::EarlyAt("2026-11-16T23:05:20Z"),
+            Step::EarlyAt("2026-11-16T23:05:21Z"),
+        ];
+        let (panel, wait) = run_clock_from("2026-11-16T23:04:59Z", steps);
+        assert_eq!(wait.deadlines[0], Some(ts("2026-11-16T23:05:00Z")));
+        let frames: Vec<_> = panel.presents.iter().map(|(f, _)| f).collect();
+        assert_eq!(
+            *frames[2],
+            alert_frame("bedtime", "2026-11-16T23:05:00Z", "2026-11-16T23:05:10Z"),
+            "the trigger at 23:05:10 changes nothing"
+        );
+        assert_eq!(
+            **frames.last().unwrap(),
+            alert_frame("bedtime", "2026-11-16T23:05:20Z", "2026-11-16T23:05:21Z"),
+            "a new bedtime starts at 23:05:20"
+        );
+        let clock = clock_frame(64, 32, "2026-11-16T23:05:20Z");
+        assert!(frames[1..].iter().all(|f| **f != clock));
+    }
+
+    #[test]
+    fn refused_trigger_during_a_message() {
+        let start = "2026-11-16T22:59:59.500Z";
+        let (hi, _r) = command_at(start, message("HI", 10));
+        let steps = vec![hi, Step::EarlyAt("2026-11-16T23:00:00Z")];
+        let (panel, _) = run_clock_from(start, steps);
+        let last = &panel.presents.last().unwrap().0;
+        assert_eq!(*last, scroll_frame("HI", start, "2026-11-16T23:00:00Z"));
+    }
+
+    #[test]
+    fn trigger_in_test_pattern_mode() {
+        let mut panel = Recorder::new(64, 32);
+        let (clock, mut wait) = script(
+            "2026-11-16T22:59:59.900Z",
+            [Step::EarlyAt("2026-11-16T23:00:00Z")],
+        );
+        run(
+            &mut panel,
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
+        let last = &panel.presents.last().unwrap().0;
+        let at = "2026-11-16T23:00:00Z";
+        assert_eq!(*last, alert_frame("bed-flash", at, at));
     }
 
     /// Records, at each present, whether a reply was already sent.

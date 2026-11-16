@@ -5,6 +5,7 @@
 //! binary only.
 
 use gameclock_core::Compositor;
+use gameclock_core::alert::{AlertScene, BUILT_IN};
 use gameclock_core::clock::Clock;
 use gameclock_core::heartbeat::Heartbeat;
 use gameclock_core::message::{Message, STEP, Scroll};
@@ -91,4 +92,40 @@ fn one_thousand_scroll_steps_allocate_nothing() {
     assert_eq!(compositor.foreground_len(), 1, "the scroll is not finished");
     // Step 512 starts the second pass. Steps 511 and 512 are both black.
     assert_eq!(presents, 999, "each other step moves the text");
+}
+
+#[test]
+fn one_thousand_alert_updates_allocate_nothing() {
+    for alert in BUILT_IN {
+        let start: Timestamp = "2026-11-16T12:00:00Z".parse().unwrap();
+        let scene = AlertScene::new(alert, start, 64, Schedule::legacy());
+        let mut compositor = Compositor::new(Box::new(Clock::new(Schedule::legacy())), 64, 32);
+        compositor.push(Box::new(scene));
+        assert!(compositor.update(&start.to_zoned(TimeZone::UTC)).is_some());
+
+        // 1000 times in the duration of the alert, before its finish.
+        let gap = alert.duration / 1001;
+        let times: Vec<_> = (1..=1000)
+            .map(|n| (start + gap * n).to_zoned(TimeZone::UTC))
+            .collect();
+
+        let info = allocation_counter::measure(|| {
+            for now in &times {
+                let _ = compositor.update(now);
+                let _ = compositor.deadline(now);
+            }
+        });
+
+        assert_eq!(
+            info.count_total, 0,
+            "heap allocations in 1000 updates of {}",
+            alert.name
+        );
+        assert_eq!(
+            compositor.foreground_len(),
+            1,
+            "{} is not finished",
+            alert.name
+        );
+    }
 }
