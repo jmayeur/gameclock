@@ -59,7 +59,7 @@
 ## 9. Docs and final verification
 
 - [x] 9.1 Update `architecture.md` (the web thread, the event channel, and the start order) and `glossary.md` (web page, web listener, origin test). Update `roadmap.md` (mark `web-control` done) and `legacy-behavior.md` (nginx, PM2, and port 3000 on the Pi). Update `docs/hardware/pi-zero-w.md` (port 80), the README, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
-- [ ] 9.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass. Run `cargo fmt` before each commit.
+- [x] 9.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass. Run `cargo fmt` before each commit.
 - [ ] 9.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
 ## Workflow follow-up
