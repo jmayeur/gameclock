@@ -10,6 +10,7 @@ use std::time::Duration;
 pub mod sim;
 
 pub mod command;
+pub mod config;
 pub mod control;
 
 use command::{Command, CommandError, OK, status_reply};
