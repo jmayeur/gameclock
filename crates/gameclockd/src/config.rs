@@ -6,6 +6,7 @@
 use core::fmt;
 
 use core::ops::Range;
+use std::path::Path;
 
 use gameclock_core::Brightness;
 use gameclock_core::alert::{
@@ -34,6 +35,13 @@ pub enum ConfigError {
         /// The problem.
         message: String,
     },
+    /// The file cannot be read.
+    Read {
+        /// The path of the file.
+        path: String,
+        /// The problem.
+        message: String,
+    },
 }
 
 impl fmt::Display for ConfigError {
@@ -45,6 +53,7 @@ impl fmt::Display for ConfigError {
                 column,
                 message,
             } => write!(f, "{path}:{line}:{column}: {message}"),
+            Self::Read { path, message } => write!(f, "cannot read {path}: {message}."),
         }
     }
 }
@@ -414,6 +423,50 @@ fn days(list: Option<&Value<Vec<Value<String>>>>) -> Result<Weekdays, Problem> {
     Ok(Weekdays::of(&set))
 }
 
+/// Where the config path came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// The default path. A missing file gives the built-in tables.
+    Default,
+    /// The `--config` argument. A missing file is an error.
+    Argument,
+}
+
+/// The tables of a load, and a note for the log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loaded {
+    /// The tables.
+    pub tables: Tables,
+    /// A line for standard error, without the program name, if the load
+    /// used the built-in tables because no file is at the default path.
+    pub note: Option<String>,
+}
+
+/// Read the file at `path` and give its tables.
+///
+/// # Errors
+/// [`ConfigError::Read`] if the file cannot be read, or is missing at a path
+/// from `--config`. [`ConfigError::Parse`] if its text has an error.
+pub fn load(path: &Path, origin: Origin) -> Result<Loaded, ConfigError> {
+    let name = path.display().to_string();
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Loaded {
+            tables: parse(&name, &text)?,
+            note: None,
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && origin == Origin::Default => {
+            Ok(Loaded {
+                tables: Tables::legacy(),
+                note: Some(format!("no config at {name}. The built-in tables apply.")),
+            })
+        }
+        Err(e) => Err(ConfigError::Read {
+            path: name,
+            message: e.to_string(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -603,6 +656,7 @@ clear = "removable"
                 message,
                 ..
             } => (*line, *column, message.clone()),
+            ConfigError::Read { message, .. } => (0, 0, message.clone()),
         }
     }
 
@@ -757,5 +811,77 @@ clear = "removable"
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../deploy/config.toml");
         let text = std::fs::read_to_string(path).expect("deploy/config.toml");
         assert_eq!(parse(path, &text).unwrap(), Tables::legacy());
+    }
+
+    // The load reads a file.
+
+    /// A new, empty directory for one test.
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("gameclockd-config-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn no_file_at_the_default_path() {
+        let path = temp_dir("none").join("config.toml");
+        let loaded = load(&path, Origin::Default).unwrap();
+        assert_eq!(loaded.tables, Tables::legacy());
+        assert_eq!(
+            loaded.note,
+            Some(format!(
+                "no config at {}. The built-in tables apply.",
+                path.display()
+            ))
+        );
+    }
+
+    #[test]
+    fn missing_file_at_a_given_path() {
+        let path = temp_dir("given").join("none.toml");
+        let e = load(&path, Origin::Argument).unwrap_err();
+        let text = e.to_string();
+        assert!(
+            text.starts_with(&format!("cannot read {}: ", path.display())),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_file_is_read() {
+        let path = temp_dir("read").join("config.toml");
+        std::fs::write(
+            &path,
+            "[schedule]\ndefault = { color = \"0000ff\", brightness = 60 }\n",
+        )
+        .unwrap();
+        for origin in [Origin::Default, Origin::Argument] {
+            let loaded = load(&path, origin).unwrap();
+            assert_eq!(loaded.note, None);
+            assert_ne!(loaded.tables, Tables::legacy());
+        }
+        std::fs::write(
+            &path,
+            "[schedule.default]\ncolor = \"ff0000\"\nbrightness = 120\n",
+        )
+        .unwrap();
+        let e = load(&path, Origin::Default).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "{}:3:14: the brightness must be from 0 to 100.",
+                path.display()
+            )
+        );
+    }
+
+    #[test]
+    fn a_file_that_is_not_utf8() {
+        let path = temp_dir("bytes").join("config.toml");
+        std::fs::write(&path, [0xff, 0xfe, b'\n']).unwrap();
+        let e = load(&path, Origin::Default).unwrap_err();
+        assert!(matches!(e, ConfigError::Read { .. }), "{e}");
     }
 }

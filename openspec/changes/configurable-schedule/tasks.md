@@ -23,8 +23,8 @@
 - [x] 3.4 Green: add the spans and the line and column from the byte offset. The 3.1 test "Trigger for an unknown alert" needs them, so they came in 3.2. Verify that the 3.3 tests pass.
 - [x] 3.5 Red: write "The example file gives the legacy tables": parse `deploy/config.toml` and compare it with `Tables::legacy()`. See it fail because the file does not exist.
 - [x] 3.6 Green: write `deploy/config.toml` with the legacy tables and STE comments. Verify that the 3.5 test passes.
-- [ ] 3.7 Red: write `config::load` tests with files in a temporary directory. Write "No file at the default path" (the built-in tables and the note text). Write "Missing file at a given path" (an error that names the path), and a file that is not UTF-8. See them fail.
-- [ ] 3.8 Green: add `config::load` with the origin (D1). Verify that the 3.7 tests pass.
+- [x] 3.7 Red: write `config::load` tests with files in a temporary directory. Write "No file at the default path" (the built-in tables and the note text). Write "Missing file at a given path" (an error that names the path), and a file that is not UTF-8. See them fail.
+- [x] 3.8 Green: add `config::load` with the origin (D1). Verify that the 3.7 tests pass.
 
 ## 4. Arguments and start (`daemon-config`, `daemon-lifecycle`)
 
