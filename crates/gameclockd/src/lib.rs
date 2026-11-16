@@ -12,9 +12,9 @@ pub mod sim;
 pub mod command;
 pub mod control;
 
-use command::{Command, OK, status_reply};
+use command::{Command, CommandError, OK, status_reply};
 
-use gameclock_core::alert::{Trigger, Triggers};
+use gameclock_core::alert::{Alerts, Trigger, Triggers};
 use gameclock_core::board::Board;
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
@@ -190,7 +190,8 @@ pub fn run<P: Panel>(
     let (width, height) = panel.dimensions();
     let mut compositor = Compositor::new(base, width, height);
     let mut board = Board::new(width, Schedule::legacy());
-    let mut triggers = Triggers::new(Trigger::legacy(), &clock.now());
+    let alerts = Alerts::legacy();
+    let mut triggers = Triggers::new(Trigger::legacy(&alerts), &clock.now());
     loop {
         let now = clock.now();
         board.advance(&now, &mut compositor);
@@ -243,12 +244,15 @@ pub fn run<P: Panel>(
                         present(panel, &mut compositor, &now)?;
                         OK.to_owned()
                     }
-                    Command::Alert(alert) => match board.alert(alert, &now, &mut compositor) {
-                        Ok(()) => {
-                            present(panel, &mut compositor, &now)?;
-                            OK.to_owned()
-                        }
-                        Err(refused) => format!("error: {refused}"),
+                    Command::Alert(name) => match alerts.find(&name) {
+                        Some(alert) => match board.alert(alert, &now, &mut compositor) {
+                            Ok(()) => {
+                                present(panel, &mut compositor, &now)?;
+                                OK.to_owned()
+                            }
+                            Err(refused) => format!("error: {refused}"),
+                        },
+                        None => CommandError::UnknownAlert(name).reply(),
                     },
                     Command::StopAlert => {
                         board.stop_alert(&now, &mut compositor);
@@ -1229,12 +1233,12 @@ mod tests {
     // Alerts and timed triggers (`openspec/specs/alerts`).
 
     fn alert(name: &str) -> Command {
-        Command::Alert(gameclock_core::alert::find(name).unwrap())
+        Command::Alert(name.to_owned())
     }
 
     /// The frame of the alert `name` that starts at `start`, at the time `at`.
     fn alert_frame(name: &str, start: &str, at: &str) -> Frame {
-        let a = gameclock_core::alert::find(name).unwrap();
+        let a = gameclock_core::alert::Alerts::legacy().find(name).unwrap();
         let mut scene = AlertScene::new(a, ts(start), 64, Schedule::legacy());
         let mut f = Frame::new(64, 32);
         scene.render(&ts(at).to_zoned(TimeZone::UTC), &mut f);

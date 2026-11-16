@@ -7,6 +7,7 @@
 //! knows what it is.
 
 use core::fmt;
+use std::rc::Rc;
 
 use jiff::Zoned;
 
@@ -20,24 +21,24 @@ use crate::schedule::Schedule;
 enum Showing {
     Nothing,
     Message(Message),
-    Alert(&'static Alert),
+    Alert(Rc<Alert>),
 }
 
 /// What blocked an alert.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Blocker {
     /// A message is on the panel.
     Message,
     /// This alert is on the panel.
-    Alert(&'static Alert),
+    Alert(Rc<Alert>),
 }
 
 /// An alert did not start, because the item on the panel has the same or a
 /// higher priority.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refused {
     /// The alert that did not start.
-    pub alert: &'static Alert,
+    pub alert: Rc<Alert>,
     /// The item on the panel.
     pub by: Blocker,
 }
@@ -45,7 +46,7 @@ pub struct Refused {
 impl fmt::Display for Refused {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "the alert '{}' did not start. ", self.alert.name)?;
-        match self.by {
+        match &self.by {
             Blocker::Message => f.write_str("A message")?,
             Blocker::Alert(by) => write!(f, "The alert '{}'", by.name)?,
         }
@@ -124,7 +125,7 @@ impl Board {
     /// priority.
     pub fn alert(
         &mut self,
-        alert: &'static Alert,
+        alert: Rc<Alert>,
         now: &Zoned,
         compositor: &mut Compositor,
     ) -> Result<(), Refused> {
@@ -133,7 +134,7 @@ impl Board {
             Showing::Nothing => (Priority::BASE, None),
             Showing::Message(_) => (Priority::MESSAGE, Some(Blocker::Message)),
             Showing::Alert(shown) if shown.name == alert.name => return Ok(()),
-            Showing::Alert(shown) => (shown.priority, Some(Blocker::Alert(shown))),
+            Showing::Alert(shown) => (shown.priority, Some(Blocker::Alert(Rc::clone(shown)))),
         };
         if let Some(by) = by
             && alert.priority <= priority
@@ -141,12 +142,17 @@ impl Board {
             return Err(Refused { alert, by });
         }
         compositor.clear_foreground();
+        let scene = AlertScene::new(
+            Rc::clone(&alert),
+            now.timestamp(),
+            self.width,
+            self.schedule.clone(),
+        );
         if let Showing::Message(message) =
             core::mem::replace(&mut self.showing, Showing::Alert(alert))
         {
             self.queue.put_back(message);
         }
-        let scene = AlertScene::new(alert, now.timestamp(), self.width, self.schedule.clone());
         compositor.push(Box::new(scene));
         Ok(())
     }
@@ -165,7 +171,7 @@ impl Board {
     /// `clear` can remove.
     pub fn clear(&mut self, now: &Zoned, compositor: &mut Compositor) {
         self.queue.clear();
-        let removable = match self.showing {
+        let removable = match &self.showing {
             Showing::Nothing => false,
             Showing::Message(_) => true,
             Showing::Alert(alert) => alert.clear == ClearRule::Removable,
@@ -186,9 +192,9 @@ impl Board {
 
     /// The name of the alert on the panel.
     #[must_use]
-    pub fn alert_name(&self) -> Option<&'static str> {
-        match self.showing {
-            Showing::Alert(alert) => Some(alert.name),
+    pub fn alert_name(&self) -> Option<&str> {
+        match &self.showing {
+            Showing::Alert(alert) => Some(&alert.name),
             Showing::Nothing | Showing::Message(_) => None,
         }
     }
@@ -197,7 +203,7 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::alert::find;
+    use crate::alert::Alerts;
     use crate::clock::Clock;
     use crate::{Frame, Scene};
     use jiff::tz::TimeZone;
@@ -219,8 +225,8 @@ mod tests {
         (Board::new(64, Schedule::legacy()), compositor)
     }
 
-    fn alert(name: &str) -> &'static Alert {
-        find(name).unwrap()
+    fn alert(name: &str) -> Rc<Alert> {
+        Alerts::legacy().find(name).unwrap()
     }
 
     fn msg(text: &str) -> Message {

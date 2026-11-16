@@ -6,7 +6,7 @@
 use core::fmt;
 
 use gameclock_core::Brightness;
-use gameclock_core::alert::{Alert, BUILT_IN, find};
+use gameclock_core::alert::Alerts;
 use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
 use gameclock_core::message::{Message, MessageError};
 use jiff::tz::TimeZone;
@@ -39,7 +39,7 @@ pub enum Command {
     Clear,
     /// Start the alert, if its priority is higher than the item on the
     /// panel.
-    Alert(&'static Alert),
+    Alert(String),
     /// Remove the alert on the panel.
     StopAlert,
 }
@@ -106,35 +106,21 @@ impl fmt::Display for CommandError {
             ),
             Self::NoAlertName => write!(
                 f,
-                "the alert command has no name. The alerts are {AlertNames}."
+                "the alert command has no name. The alerts are {}.",
+                Alerts::legacy().names()
             ),
             Self::UnknownAlert(name) => {
-                write!(f, "unknown alert '{name}'. The alerts are {AlertNames}.")
+                write!(
+                    f,
+                    "unknown alert '{name}'. The alerts are {}.",
+                    Alerts::legacy().names()
+                )
             }
         }
     }
 }
 
 impl std::error::Error for CommandError {}
-
-/// The names of the built-in alerts as a list, for example `a, b, and c`.
-struct AlertNames;
-
-impl fmt::Display for AlertNames {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let count = BUILT_IN.len();
-        for (n, alert) in BUILT_IN.iter().enumerate() {
-            match n {
-                0 => {}
-                _ if n + 1 == count && count == 2 => f.write_str(" and ")?,
-                _ if n + 1 == count => f.write_str(", and ")?,
-                _ => f.write_str(", ")?,
-            }
-            f.write_str(alert.name)?;
-        }
-        Ok(())
-    }
-}
 
 /// Parse one command line, without its line feed. Spaces at the start and
 /// the end do not count.
@@ -156,9 +142,8 @@ pub fn parse_command(line: &[u8]) -> Result<Command, CommandError> {
         return match rest.trim() {
             "" => Err(CommandError::NoAlertName),
             "stop" => Ok(Command::StopAlert),
-            name => find(name)
-                .map(Command::Alert)
-                .ok_or_else(|| CommandError::UnknownAlert(name.to_owned())),
+            name if Alerts::legacy().find(name).is_some() => Ok(Command::Alert(name.to_owned())),
+            name => Err(CommandError::UnknownAlert(name.to_owned())),
         };
     }
     match text {
@@ -279,7 +264,7 @@ mod tests {
             let line = format!("alert {name}");
             assert_eq!(
                 parse_command(line.as_bytes()),
-                Ok(Command::Alert(gameclock_core::alert::find(name).unwrap())),
+                Ok(Command::Alert(name.to_owned())),
                 "{line}"
             );
         }

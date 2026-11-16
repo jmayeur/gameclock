@@ -7,9 +7,9 @@
 
 ## 2. Owned alerts and limits in the core (`alerts`)
 
-- [ ] 2.1 Red: write `Alert::validate` and `Alerts::new` tests. Test a good alert, a name that is empty, too long, `stop`, or has an upper-case letter, and two alerts with one name. Also test a text that is empty or has 65 characters, `passes = 0` and 11, `seconds` 0 and 3601, and a still text with passes. Test `Alerts::find` and `names()` (`panic, bedtime, and bed-flash`, `a and b`, and `dinner`). See them fail.
-- [ ] 2.2 Green: make `Alert` owned (`String` name and text), add `AlertError`, `Alert::validate`, and `Alerts` with `new`, `legacy`, `find`, and `names` (design D3). Remove `BUILT_IN` and `find`. Change `AlertScene`, `Board`, and `Trigger` to `Rc<Alert>`. Verify that the 2.1 tests and all earlier core tests pass, with only the type changes in them.
-- [ ] 2.3 Verify that `tests/no_alloc.rs` passes for each alert of `Alerts::legacy()`. To see it fail, clone the alert text in `render` for a short time. Then remove the clone.
+- [x] 2.1 Red: write `Alert::validate` and `Alerts::new` tests. Test a good alert, a name that is empty, too long, `stop`, or has an upper-case letter, and two alerts with one name. Also test a text that is empty or has 65 characters, `passes = 0` and 11, and `seconds` 0 and 3601. The core type `Motion` cannot hold `x` and `passes` together, so the config parse tests that case (3.3). Test `Alerts::find` and `names()` (`panic, bedtime, and bed-flash`, `a and b`, and `dinner`). See them fail.
+- [x] 2.2 Green: make `Alert` owned (`String` name and text), add `AlertError`, `Alert::validate`, and `Alerts` with `new`, `legacy`, `find`, and `names` (design D3). Remove `BUILT_IN` and `find`. Change `AlertScene`, `Board`, and `Trigger` to `Rc<Alert>`. Verify that the 2.1 tests and all earlier core tests pass, with only the type changes in them.
+- [x] 2.3 Verify that `tests/no_alloc.rs` passes for each alert of `Alerts::legacy()`. To see it fail, clone the alert text in `render` for a short time. Then remove the clone.
 - [ ] 2.4 Red: write `Trigger::new` tests: `from` at or after `to`, and `every` 0 s and 3601 s are errors. See them fail.
 - [ ] 2.5 Green: add `Trigger::new` with its limits, and use it in `Trigger::legacy()`. Verify that the 2.4 tests pass.
 - [ ] 2.6 Red: write a test that `Tables::legacy()` has the legacy schedule, the three built-in alerts, and the two bedtime triggers. Add a `PartialEq` test for two `Tables::legacy()` values. See it fail.
