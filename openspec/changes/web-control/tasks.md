@@ -39,8 +39,8 @@
 
 ## 6. Deployment (`pi-deployment`)
 
-- [ ] 6.1 Red: add "Deploy stops the legacy web stack" and "Enable disables the legacy web stack" to `scripts/test-deploy.sh`. Add "Rollback starts the legacy web stack". Test the order of the commands. See them fail.
-- [ ] 6.2 Green: change `scripts/deploy.sh` and its usage text (D8). Verify with `scripts/test-deploy.sh`.
+- [x] 6.1 Red: add "Deploy stops the legacy web stack" and "Enable disables the legacy web stack" to `scripts/test-deploy.sh`. Add "Rollback starts the legacy web stack". Test the order of the commands. See them fail.
+- [x] 6.2 Green: change `scripts/deploy.sh` and its usage text (D8). Verify with `scripts/test-deploy.sh`.
 
 ## 7. Simulator verification
 
