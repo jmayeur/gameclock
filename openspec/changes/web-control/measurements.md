@@ -78,9 +78,9 @@ All runs are below the 500 ms budget of the spec.
   limit of 90 s, and systemd started it again in a loop. It used about 31%
   of the CPU next to the legacy clock (54%).
 - With the legacy clock on the core, `node -e 0` took 55 s, and a load of
-  the PM2 module took 77 s. With a limit of 5 minutes (a drop-in for a
-  test), PM2 started the app 4 min 57 s after the start, and then reached
-  the limit. A start of PM2 runs Node three times.
+  the PM2 module took 77 s. For a test, a drop-in gave PM2 a limit of
+  5 minutes. PM2 started the app 4 min 57 s after the start, and then
+  reached the limit. A start of PM2 runs Node three times.
 - The stale `~/.pm2/rpc.sock` and `pub.sock` from the killed PM2 daemon were
   removed. They were not the cause. PM2 made new ones at its next start.
 - The rollback now gives PM2 a start limit of 15 minutes and starts it with
