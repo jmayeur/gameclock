@@ -3,8 +3,119 @@
 //!
 //! The routes are pure functions. The listener thread only moves bytes.
 
+use gameclock_core::message::Message;
+
+use crate::command::{Command, CommandError, NO_ANSWER, parse_color};
+use crate::http::{Request, Response, Status};
+
 /// The type of a form body.
 const FORM_TYPE: &str = "application/x-www-form-urlencoded";
+
+/// The type of the page.
+const HTML: &str = "text/html; charset=utf-8";
+
+/// The legacy page sends these `msg` values for its two buttons.
+const LEGACY_ALERTS: [(&str, &str); 2] = [("panic88", "panic"), ("bedtime", "bedtime")];
+
+/// The answer of the loop to one command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reply {
+    /// The reply line of the loop.
+    Answer(String),
+    /// The loop did not answer in time.
+    NoAnswer,
+}
+
+/// Give the response to `request`. `ask` sends one command to the loop and
+/// gives its reply.
+pub fn route(request: &Request, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
+    let method = request.method.as_str();
+    let (allow, action): (&str, Option<Action>) = match request.path.as_str() {
+        "/" => ("GET", None),
+        "/message" => ("POST", Some(Action::Message)),
+        "/alert" => ("POST", Some(Action::Alert)),
+        "/alert/stop" => ("POST", Some(Action::Stop)),
+        "/clear" => ("POST", Some(Action::Clear)),
+        _ => return Response::refusal(Status::NotFound),
+    };
+    if method != allow {
+        return Response::refusal(Status::MethodNotAllowed).with_header("Allow", allow);
+    }
+    match action {
+        None => page(Status::Ok, None, ask),
+        Some(action) => post(request, action, ask),
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Action {
+    Message,
+    Alert,
+    Stop,
+    Clear,
+}
+
+fn post(request: &Request, action: Action, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
+    if !request.body.is_empty() && !is_form(request.header("content-type")) {
+        return Response::refusal(Status::UnsupportedMediaType);
+    }
+    let Ok(form) = decode_form(&request.body) else {
+        return Response::refusal(Status::BadRequest);
+    };
+    let command = match action {
+        Action::Message => match message_command(&form) {
+            Ok(command) => command,
+            Err(e) => return page(Status::BadRequest, Some(&e.reply()), ask),
+        },
+        Action::Alert => Command::Alert(form.get("name").map(str::to_owned)),
+        Action::Stop => Command::StopAlert,
+        Action::Clear => Command::Clear,
+    };
+    match ask(command) {
+        Reply::Answer(reply) => {
+            let status = if reply == "ok" || reply.starts_with("ok ") {
+                Status::Ok
+            } else {
+                Status::BadRequest
+            };
+            page(status, Some(&reply), ask)
+        }
+        Reply::NoAnswer => page(Status::Unavailable, Some(NO_ANSWER), ask),
+    }
+}
+
+/// The command for a message form. The legacy values start their alerts.
+fn message_command(form: &Form) -> Result<Command, CommandError> {
+    // The legacy rule: each run of white space is one space.
+    let text = form
+        .get("msg")
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if let Some((_, alert)) = LEGACY_ALERTS.iter().find(|(value, _)| *value == text) {
+        return Ok(Command::Alert(Some((*alert).to_owned())));
+    }
+    let passes = match form.get("passes").unwrap_or_default() {
+        "" => Message::DEFAULT_PASSES,
+        value => value.parse().map_err(|_| CommandError::Passes)?,
+    };
+    let color = match form.get("color").unwrap_or_default() {
+        "" => Message::DEFAULT_COLOR,
+        value => {
+            // An `<input type="color">` value starts with `#`.
+            let digits = value.strip_prefix('#').unwrap_or(value);
+            parse_color(digits).ok_or(CommandError::Color)?
+        }
+    };
+    Ok(Command::Message(Message::new(text, passes, color)?))
+}
+
+/// The page, with the reply of an action.
+fn page(status: Status, reply: Option<&str>, _ask: &mut dyn FnMut(Command) -> Reply) -> Response {
+    let reply = reply.unwrap_or_default();
+    Response::new(status, HTML, format!("<!doctype html><p>{reply}</p>"))
+}
 
 /// A form value that the decoder cannot read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +199,238 @@ fn hex(b: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::command::Command;
+    use crate::http::{Parse, Request, Status, parse};
+    use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
+    use gameclock_core::message::Message;
+
+    const STATUS: &str = "ok mode=clock zone=UTC brightness=60 messages=2 alert=none";
+    const NAMES: [&str; 3] = ["panic", "bedtime", "bed-flash"];
+
+    fn request(bytes: &str) -> Request {
+        match parse(bytes.as_bytes()) {
+            Parse::Complete(request) => request,
+            other => panic!("not complete: {other:?}"),
+        }
+    }
+
+    fn post(path: &str, body: &str) -> Request {
+        request(&format!(
+            "POST {path} HTTP/1.1\r\nHost: clock.local\r\n\
+             Content-Type: application/x-www-form-urlencoded\r\n\
+             Content-Length: {}\r\n\r\n{body}",
+            body.len()
+        ))
+    }
+
+    /// The reply of a loop with the built-in alerts.
+    fn loop_reply(command: &Command) -> Reply {
+        Reply::Answer(match command {
+            Command::Status => STATUS.to_owned(),
+            Command::AlertNames => format!("ok {}", NAMES.join(" ")),
+            Command::Alert(Some(name)) if !NAMES.contains(&name.as_str()) => format!(
+                "error: unknown alert '{name}'. The alerts are panic, bedtime, and bed-flash."
+            ),
+            _ => "ok".to_owned(),
+        })
+    }
+
+    /// Route `request` with a fake loop. Give the response and the commands
+    /// that change the panel. The page also asks for the status and the alert
+    /// names. Those do not count.
+    fn send(request: &Request) -> (Response, Vec<Command>) {
+        send_with(request, loop_reply)
+    }
+
+    fn send_with(request: &Request, reply: fn(&Command) -> Reply) -> (Response, Vec<Command>) {
+        let mut seen = Vec::new();
+        let response = route(request, &mut |command| {
+            let answer = reply(&command);
+            seen.push(command);
+            answer
+        });
+        let actions = seen
+            .into_iter()
+            .filter(|c| !matches!(c, Command::Status | Command::AlertNames))
+            .collect();
+        (response, actions)
+    }
+
+    fn body(response: &Response) -> String {
+        String::from_utf8(response.body.clone()).unwrap()
+    }
+
+    fn message(text: &str, passes: u8, color: Rgb888) -> Command {
+        Command::Message(Message::new(text, passes, color).unwrap())
+    }
+
+    #[test]
+    fn send_a_message() {
+        let (response, actions) = send(&post("/message", "msg=Go+team%21&passes=2&color=ff0000"));
+        assert_eq!(actions, [message("Go team!", 2, Rgb888::new(255, 0, 0))]);
+        assert_eq!(response.status, Status::Ok);
+        assert_eq!(response.content_type, "text/html; charset=utf-8");
+        assert!(body(&response).contains("ok"));
+    }
+
+    #[test]
+    fn message_with_the_defaults() {
+        for form in ["msg=hi", "msg=hi&passes=&color="] {
+            let (_, actions) = send(&post("/message", form));
+            assert_eq!(
+                actions,
+                [message(
+                    "hi",
+                    Message::DEFAULT_PASSES,
+                    Message::DEFAULT_COLOR
+                )],
+                "{form}"
+            );
+        }
+        assert_eq!(Message::DEFAULT_PASSES, 4);
+        assert_eq!(Message::DEFAULT_COLOR, Rgb888::new(0, 150, 0));
+    }
+
+    #[test]
+    fn message_with_white_space() {
+        let (_, actions) = send(&post("/message", "msg=%20a%0D%0Ab%09%09c%20"));
+        assert_eq!(actions, [message("a b c", 4, Message::DEFAULT_COLOR)]);
+    }
+
+    #[test]
+    fn color_from_a_color_input() {
+        let (_, actions) = send(&post("/message", "msg=hi&color=%2300FF00"));
+        assert_eq!(actions, [message("hi", 4, Rgb888::new(0, 255, 0))]);
+    }
+
+    #[test]
+    fn message_that_is_too_long() {
+        let (response, actions) = send(&post("/message", &format!("msg={}", "a".repeat(65))));
+        assert_eq!(response.status, Status::BadRequest);
+        assert!(body(&response).contains("the message is longer than 64 characters."));
+        assert_eq!(actions, []);
+    }
+
+    #[test]
+    fn empty_message() {
+        let (response, actions) = send(&post("/message", "msg=+++"));
+        assert_eq!(response.status, Status::BadRequest);
+        assert!(body(&response).contains("the message has no text."));
+        assert_eq!(actions, []);
+        let (response, _) = send(&post("/message", "passes=2"));
+        assert_eq!(response.status, Status::BadRequest);
+    }
+
+    #[test]
+    fn bad_passes_or_color() {
+        for form in ["msg=hi&passes=11", "msg=hi&passes=0", "msg=hi&passes=two"] {
+            let (response, actions) = send(&post("/message", form));
+            assert_eq!(response.status, Status::BadRequest, "{form}");
+            assert!(body(&response).contains("--passes must be a number from 1 to 10."));
+            assert_eq!(actions, []);
+        }
+        for form in [
+            "msg=hi&color=red",
+            "msg=hi&color=%23%23ff0000",
+            "msg=hi&color=ff00001",
+        ] {
+            let (response, actions) = send(&post("/message", form));
+            assert_eq!(response.status, Status::BadRequest, "{form}");
+            assert!(body(&response).contains("--color must be six hexadecimal digits"));
+            assert_eq!(actions, []);
+        }
+    }
+
+    #[test]
+    fn start_an_alert() {
+        let (response, actions) = send(&post("/alert", "name=panic"));
+        assert_eq!(actions, [Command::Alert(Some("panic".into()))]);
+        assert_eq!(response.status, Status::Ok);
+    }
+
+    #[test]
+    fn unknown_alert() {
+        let (response, actions) = send(&post("/alert", "name=dinner"));
+        assert_eq!(actions, [Command::Alert(Some("dinner".into()))]);
+        assert_eq!(response.status, Status::BadRequest);
+        assert!(body(&response).contains("The alerts are panic, bedtime, and bed-flash."));
+    }
+
+    #[test]
+    fn alert_with_no_name() {
+        let (_, actions) = send(&post("/alert", ""));
+        assert_eq!(actions, [Command::Alert(None)]);
+    }
+
+    #[test]
+    fn stop_and_clear() {
+        let (stop, a1) = send(&post("/alert/stop", ""));
+        let (clear, a2) = send(&post("/clear", ""));
+        assert_eq!(a1, [Command::StopAlert]);
+        assert_eq!(a2, [Command::Clear]);
+        assert_eq!(stop.status, Status::Ok);
+        assert_eq!(clear.status, Status::Ok);
+    }
+
+    #[test]
+    fn the_loop_does_not_answer() {
+        let (response, actions) = send_with(&post("/message", "msg=hi"), |_| Reply::NoAnswer);
+        assert_eq!(response.status, Status::Unavailable);
+        assert!(body(&response).contains("the daemon did not answer in 2 s."));
+        assert_eq!(actions, [message("hi", 4, Message::DEFAULT_COLOR)]);
+    }
+
+    #[test]
+    fn legacy_buttons() {
+        let (_, panic) = send(&post("/message", "msg=panic88"));
+        let (_, bedtime) = send(&post("/message", "msg=bedtime"));
+        assert_eq!(panic, [Command::Alert(Some("panic".into()))]);
+        assert_eq!(bedtime, [Command::Alert(Some("bedtime".into()))]);
+    }
+
+    #[test]
+    fn post_that_is_not_a_form() {
+        let request = request(
+            "POST /message HTTP/1.1\r\nContent-Type: application/json\r\n\
+             Content-Length: 12\r\n\r\n{\"msg\":\"hi\"}",
+        );
+        let (response, actions) = send(&request);
+        assert_eq!(response.status, Status::UnsupportedMediaType);
+        assert_eq!(actions, []);
+    }
+
+    #[test]
+    fn empty_post_with_no_type() {
+        let request = request("POST /clear HTTP/1.1\r\nContent-Length: 0\r\n\r\n");
+        let (response, actions) = send(&request);
+        assert_eq!(response.status, Status::Ok);
+        assert_eq!(actions, [Command::Clear]);
+    }
+
+    #[test]
+    fn bad_percent_code() {
+        for form in ["msg=%G1", "msg=%FF"] {
+            let (response, actions) = send(&post("/message", form));
+            assert_eq!(response.status, Status::BadRequest, "{form}");
+            assert_eq!(actions, []);
+        }
+    }
+
+    #[test]
+    fn unknown_path_and_wrong_method() {
+        let (missing, _) = send(&request("GET /nothing HTTP/1.1\r\n\r\n"));
+        assert_eq!(missing.status, Status::NotFound);
+        for (head, allow) in [
+            ("DELETE / HTTP/1.1\r\n\r\n", "GET"),
+            ("OPTIONS / HTTP/1.1\r\n\r\n", "GET"),
+            ("GET /message HTTP/1.1\r\n\r\n", "POST"),
+        ] {
+            let (response, actions) = send(&request(head));
+            assert_eq!(response.status, Status::MethodNotAllowed, "{head:?}");
+            assert_eq!(response.headers, [("Allow", allow.to_owned())], "{head:?}");
+            assert_eq!(actions, []);
+        }
+    }
 
     #[test]
     fn plus_and_percent_codes() {

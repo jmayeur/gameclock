@@ -162,15 +162,21 @@ fn parse_message(rest: &str) -> Result<Message, CommandError> {
         }
         rest = tail.trim_start();
     }
-    Message::new(rest, passes, color).map_err(|e| match e {
-        MessageError::NoText => CommandError::NoText,
-        MessageError::TooLong => CommandError::TextTooLong,
-        MessageError::Passes => CommandError::Passes,
-    })
+    Message::new(rest, passes, color).map_err(CommandError::from)
+}
+
+impl From<MessageError> for CommandError {
+    fn from(e: MessageError) -> Self {
+        match e {
+            MessageError::NoText => Self::NoText,
+            MessageError::TooLong => Self::TextTooLong,
+            MessageError::Passes => Self::Passes,
+        }
+    }
 }
 
 /// The color of six hexadecimal digits `RRGGBB`, or `None`.
-fn parse_color(value: &str) -> Option<Rgb888> {
+pub(crate) fn parse_color(value: &str) -> Option<Rgb888> {
     if value.len() != 6 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }

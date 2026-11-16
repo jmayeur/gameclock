@@ -16,8 +16,8 @@
 
 - [x] 3.1 Red: write form decoder tests: `+`, `%XX`, a bad `%G1`, `%FF` that is not UTF-8, a doubled field (the last wins), and a `Content-Type` with `; charset=UTF-8`. See them fail.
 - [x] 3.2 Green: add the form decoder in `web.rs` (D5). Verify that the 3.1 tests pass.
-- [ ] 3.3 Red: write `route` tests with a fake `ask` that records the commands. Write "Send a message", "Message with the defaults", "Message with white space", "Message that is too long", and "Empty message". Write "Bad passes or color" (also a color with `#`). Write "Start an alert", "Unknown alert", "Stop and clear", and "The loop does not answer". Write "Legacy panic button" and "Legacy bedtime button". Write "Post that is not a form", "Bad percent code", and "Unknown path and wrong method". See them fail.
-- [ ] 3.4 Green: add `route`, the mapping to `Command`, and the error text from `command.rs` (D3, D5). Verify that the 3.3 tests pass.
+- [x] 3.3 Red: write `route` tests with a fake `ask` that records the commands. Write "Send a message", "Message with the defaults", "Message with white space", "Message that is too long", and "Empty message". Write "Bad passes or color" (also a color with `#`). Write "Start an alert", "Unknown alert", "Stop and clear", and "The loop does not answer". Write "Legacy panic button" and "Legacy bedtime button". Write "Post that is not a form", "Bad percent code", and "Unknown path and wrong method". See them fail.
+- [x] 3.4 Green: add `route`, the mapping to `Command`, and the error text from `command.rs` (D3, D5). Verify that the 3.3 tests pass.
 - [ ] 3.5 Red: write page tests: "Page with the built-in alerts", "Page shows the status", and "Text from data is escaped". Test the `Content-Security-Policy` header. See them fail.
 - [ ] 3.6 Green: add the page with its style in the HTML, the HTML escape, and the parse of the `status` reply (D4). Verify that the 3.5 tests pass. Ask the user to look at the page in a browser on the dev machine with the `simulator` build.
 - [ ] 3.7 Red: write "Health with a loop" and "Health with no answer". See them fail.
