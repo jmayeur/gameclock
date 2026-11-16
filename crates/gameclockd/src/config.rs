@@ -749,4 +749,13 @@ clear = "removable"
             )
         );
     }
+
+    // The example file gives the legacy tables.
+
+    #[test]
+    fn the_example_file_gives_the_legacy_tables() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../deploy/config.toml");
+        let text = std::fs::read_to_string(path).expect("deploy/config.toml");
+        assert_eq!(parse(path, &text).unwrap(), Tables::legacy());
+    }
 }

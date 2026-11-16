@@ -21,8 +21,8 @@
 - [x] 3.2 Green: add the `config` module with the serde types, `parse`, and `ConfigError` (D1, D2). Verify that the 3.1 tests pass.
 - [x] 3.3 Red: write tests for "Brightness out of range" (the exact error text with line 3, column 14) and "Unknown key". Also write "TOML syntax error" and each value of "Range values". Test the line and the column of each error. The spans of 3.2 made them pass at once, so a wrong column in `position` for a short time made 7 of them fail.
 - [x] 3.4 Green: add the spans and the line and column from the byte offset. The 3.1 test "Trigger for an unknown alert" needs them, so they came in 3.2. Verify that the 3.3 tests pass.
-- [ ] 3.5 Red: write "The example file gives the legacy tables": parse `deploy/config.toml` and compare it with `Tables::legacy()`. See it fail because the file does not exist.
-- [ ] 3.6 Green: write `deploy/config.toml` with the legacy tables and STE comments. Verify that the 3.5 test passes.
+- [x] 3.5 Red: write "The example file gives the legacy tables": parse `deploy/config.toml` and compare it with `Tables::legacy()`. See it fail because the file does not exist.
+- [x] 3.6 Green: write `deploy/config.toml` with the legacy tables and STE comments. Verify that the 3.5 test passes.
 - [ ] 3.7 Red: write `config::load` tests with files in a temporary directory. Write "No file at the default path" (the built-in tables and the note text). Write "Missing file at a given path" (an error that names the path), and a file that is not UTF-8. See them fail.
 - [ ] 3.8 Green: add `config::load` with the origin (D1). Verify that the 3.7 tests pass.
 
