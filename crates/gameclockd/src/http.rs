@@ -389,6 +389,77 @@ mod tests {
         assert_eq!(request.body, b"ab");
     }
 
+    /// A small xorshift generator. A fixed seed gives the same inputs each run.
+    struct Random(u64);
+
+    impl Random {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+
+        fn below(&mut self, n: usize) -> usize {
+            usize::try_from(self.next() % n as u64).unwrap()
+        }
+    }
+
+    /// A good request with headers of random sizes. Some heads are over the
+    /// limit.
+    fn random_request(random: &mut Random) -> Vec<u8> {
+        let mut bytes = if random.below(2) == 0 {
+            b"GET /health HTTP/1.1\r\n".to_vec()
+        } else {
+            b"POST /message HTTP/1.1\r\nContent-Length: 6\r\n".to_vec()
+        };
+        for _ in 0..random.below(6) {
+            bytes.extend_from_slice(b"X-Pad: ");
+            bytes.extend(std::iter::repeat_n(b'a', random.below(3000)));
+            bytes.extend_from_slice(b"\r\n");
+        }
+        bytes.extend_from_slice(b"\r\nmsg=hi");
+        bytes
+    }
+
+    /// Check one parse: no panic, and no complete request with a head over
+    /// the limit.
+    fn check(bytes: &[u8]) {
+        if let Parse::Complete(request) = parse(bytes) {
+            let head = head_end(bytes).unwrap();
+            assert!(head <= MAX_HEAD, "head of {head} bytes");
+            assert!(request.body.len() <= MAX_BODY);
+        }
+    }
+
+    #[test]
+    fn random_bytes() {
+        let mut random = Random(0x5eed_1234_abcd_0001);
+        for _ in 0..10_000 {
+            let length = random.below(MAX_HEAD + 2 * MAX_BODY);
+            let bytes: Vec<u8> = (0..length)
+                .map(|_| {
+                    // Many line ends, so that some heads end.
+                    if random.below(8) == 0 {
+                        b'\n'
+                    } else {
+                        random.next().to_le_bytes()[0]
+                    }
+                })
+                .collect();
+            check(&bytes);
+        }
+        for _ in 0..2_000 {
+            let mut bytes = random_request(&mut random);
+            check(&bytes);
+            let cut = random.below(bytes.len() + 1);
+            check(bytes.get(..cut).unwrap());
+            let at = random.below(bytes.len());
+            bytes[at] = random.next().to_le_bytes()[0];
+            check(&bytes);
+        }
+    }
+
     #[test]
     fn bad_request_lines_and_headers() {
         for head in [
