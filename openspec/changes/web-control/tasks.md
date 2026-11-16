@@ -54,7 +54,7 @@
 - [x] 8.4 Run "Page from a phone": ask the user to open the page on a phone, send a message, and start the panic alert. Ask the user to verify the panel.
 - [x] 8.5 Run "Idle clock with the listener": `scripts/measure.sh` for 60 s with the clock only. Record CPU and voluntary context switches for the main thread and the web thread, and RSS.
 - [x] 8.6 Run "Response time on the LAN": 5 runs each of `GET /` and `POST /message`. Record the medians next to the legacy numbers.
-- [ ] 8.7 Run "Rollback gives back the legacy page": `scripts/deploy.sh --rollback`, then a message from the legacy page. Leave the legacy clock running unless the user asks for `--enable`.
+- [x] 8.7 Run "Rollback gives back the legacy page": `scripts/deploy.sh --rollback`, then a message from the legacy page. Leave the legacy clock running unless the user asks for `--enable`. The first rollback did not give back the page, because PM2 needs about 5 minutes on the Pi. The rollback now starts PM2 with no wait and a limit of 15 minutes. The page came back 4 min 43 s after the rollback, and the user saw the message. The user then asked to run `gameclockd` again, so the deploy ran again.
 
 ## 9. Docs and final verification
 

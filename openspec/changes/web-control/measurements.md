@@ -85,5 +85,11 @@ All runs are below the 500 ms budget of the spec.
   removed. They were not the cause. PM2 made new ones at its next start.
 - The rollback now gives PM2 a start limit of 15 minutes and starts it with
   no wait. The test drop-in of 5 minutes is removed from the Pi.
+- The changed rollback ended in 63 s. The legacy clock and nginx were
+  active at its end, and the drop-in gave PM2 a limit of 15 minutes. PM2
+  was active 3 min 25 s after the end. The legacy page gave 200 4 min 43 s
+  after the end. A message through the legacy page showed on the legacy
+  clock. The user saw it.
 - After the checks, `gameclockd` serves the page on port 80, and the boot
   services are unchanged: the legacy clock, nginx, and PM2 start at boot.
+  The rollback drop-in for PM2 stays on the Pi.
