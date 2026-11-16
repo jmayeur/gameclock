@@ -22,8 +22,8 @@
 - [x] 3.6 Green: add the page with its style in the HTML, the HTML escape, and the parse of the `status` reply (D4). Verify that the 3.5 tests pass. The listener comes in 5.4, so the user looks at the page in a browser in 7.1.
 - [x] 3.7 Red: write "Health with a loop" and "Health with no answer". See them fail.
 - [x] 3.8 Green: add `GET /health`. Verify that the 3.7 tests pass.
-- [ ] 3.9 Red: write "Post from the page", "Post from another site", an `Origin` of `null`, an `Origin` with a different port, and "No CORS headers". See them fail.
-- [ ] 3.10 Green: add the `Origin` test of each post (D6). Verify that the 3.9 tests pass.
+- [x] 3.9 Red: write "Post from the page", "Post from another site", an `Origin` of `null`, an `Origin` with a different port, and "No CORS headers". See them fail. "Post from another site" failed. "Post from the page" and "No CORS headers" passed at once: with no check, each post works, and no response had CORS headers. They guard that behavior.
+- [x] 3.10 Green: add the `Origin` test of each post (D6). Verify that the 3.9 tests pass.
 
 ## 4. The loop (`web-control`)
 

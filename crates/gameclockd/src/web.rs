@@ -74,6 +74,11 @@ enum Action {
 }
 
 fn post(request: &Request, action: Action, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
+    if let Some(origin) = request.header("origin")
+        && !same_site(origin, request.header("host"))
+    {
+        return Response::refusal(Status::Forbidden);
+    }
     if !request.body.is_empty() && !is_form(request.header("content-type")) {
         return Response::refusal(Status::UnsupportedMediaType);
     }
@@ -100,6 +105,30 @@ fn post(request: &Request, action: Action, ask: &mut dyn FnMut(Command) -> Reply
         }
         Reply::NoAnswer => page(Status::Unavailable, Some(NO_ANSWER), ask),
     }
+}
+
+/// True if `origin` names the same host and port as the `Host` header. A
+/// browser sends `Origin` with each post from a different site. Then a page
+/// on the internet cannot post through a browser on the LAN (docs/adr/0020).
+fn same_site(origin: &str, host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let Some(authority) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    if authority.contains(['/', '@']) {
+        return false;
+    }
+    // A browser does not write the default port.
+    let normal = |value: &str| {
+        let value = value.to_ascii_lowercase();
+        value
+            .strip_suffix(":80")
+            .map(str::to_owned)
+            .unwrap_or(value)
+    };
+    !authority.is_empty() && normal(authority) == normal(host)
 }
 
 /// The command for a message form. The legacy values start their alerts.
@@ -527,6 +556,70 @@ mod tests {
         assert_eq!(seen, []);
         assert_eq!(response.status, Status::MethodNotAllowed);
         assert_eq!(response.headers, [("Allow", "GET".to_owned())]);
+    }
+
+    fn post_from(host: &str, origin: &str) -> Request {
+        request(&format!(
+            "POST /message HTTP/1.1\r\nHost: {host}\r\nOrigin: {origin}\r\n\
+             Content-Type: application/x-www-form-urlencoded\r\n\
+             Content-Length: 6\r\n\r\nmsg=hi"
+        ))
+    }
+
+    #[test]
+    fn post_from_the_page() {
+        for (host, origin) in [
+            ("clock.local", "http://clock.local"),
+            ("clock.local:8080", "http://clock.local:8080"),
+            ("clock.local", "http://clock.local:80"),
+            ("Clock.Local", "http://clock.local"),
+            ("192.168.1.9", "http://192.168.1.9"),
+        ] {
+            let (response, actions) = send(&post_from(host, origin));
+            assert_eq!(response.status, Status::Ok, "{host} {origin}");
+            assert_eq!(actions.len(), 1);
+        }
+    }
+
+    #[test]
+    fn post_from_another_site() {
+        for (host, origin) in [
+            ("clock.local", "https://example.com"),
+            ("clock.local", "null"),
+            ("clock.local", "http://clock.local:8080"),
+            ("clock.local:8080", "http://clock.local"),
+            ("clock.local", "https://clock.local"),
+            ("clock.local", "http://clock.local.example.com"),
+            ("clock.local", "http://clock.local/"),
+            ("clock.local", ""),
+        ] {
+            let (response, actions) = send(&post_from(host, origin));
+            assert_eq!(response.status, Status::Forbidden, "{host} {origin}");
+            assert_eq!(actions, [], "{host} {origin}");
+        }
+        let no_host = request(
+            "POST /clear HTTP/1.1\r\nOrigin: http://clock.local\r\nContent-Length: 0\r\n\r\n",
+        );
+        assert_eq!(send(&no_host).0.status, Status::Forbidden);
+    }
+
+    #[test]
+    fn no_cors_headers() {
+        for head in [
+            "GET / HTTP/1.1\r\nHost: clock.local\r\nOrigin: https://example.com\r\n\r\n",
+            "OPTIONS / HTTP/1.1\r\nHost: clock.local\r\nOrigin: https://example.com\r\n\r\n",
+        ] {
+            let (response, _) = send(&request(head));
+            let text = String::from_utf8(response.to_bytes())
+                .unwrap()
+                .to_ascii_lowercase();
+            assert!(!text.contains("access-control-"), "{text}");
+        }
+        let (response, _) = send(&post_from("clock.local", "https://example.com"));
+        let text = String::from_utf8(response.to_bytes())
+            .unwrap()
+            .to_ascii_lowercase();
+        assert!(!text.contains("access-control-"), "{text}");
     }
 
     #[test]
