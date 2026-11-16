@@ -2,7 +2,7 @@
 
 ## 1. ADR
 
-- [ ] 1.1 Write ADR-0020 (the daemon serves the web page with its own small HTTP server). Give the `tiny_http` findings (no header limit, no read timeout, one thread for each connection) and the `tiny_http_dh` findings. Link ADR-0010 and ADR-0016, and add ADR-0020 to the "Related" line of ADR-0016 as a small note. Add it to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 1.1 Write ADR-0020 (the daemon serves the web page with its own small HTTP server). Give the `tiny_http` findings (no header limit, no read timeout, one thread for each connection) and the `tiny_http_dh` findings. Link ADR-0010 and ADR-0016, and add ADR-0020 to the "Related" line of ADR-0016 as a small note. Add it to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
 
 ## 2. The HTTP parser and responses (`web-control`)
 

@@ -38,3 +38,4 @@ zero-padded) and add it to the index below.
 | [0017](0017-messages-scroll-from-time-and-daemon-queue.md) | Messages scroll from the injected time, and the daemon owns the queue | Accepted |
 | [0018](0018-alerts-are-data-with-priorities-and-triggers.md) | Alerts are data, with priorities and timed triggers | Accepted |
 | [0019](0019-config-file-toml-with-serde.md) | The config is a TOML file that serde reads in the daemon | Accepted |
+| [0020](0020-web-page-with-own-http-server.md) | The daemon serves the web page with its own small HTTP server | Accepted |
