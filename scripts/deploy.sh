@@ -5,7 +5,9 @@
 #
 #   (default)   build, copy the binary and unit, install, and restart the
 #               service. Starting it stops the legacy clock (Conflicts=).
-#               What starts at boot is unchanged.
+#               What starts at boot is unchanged. Install deploy/config.toml
+#               as /etc/gameclockd/config.toml only if no config is there,
+#               so an edited config stays (docs/adr/0019).
 #   --enable    also make gameclockd the boot service instead of the legacy
 #               clock.
 #   --rollback  stop and disable gameclockd. Start and enable the legacy
@@ -57,6 +59,7 @@ bin=$GAMECLOCKD_BIN
 remote_dir=$(ssh "$host" 'mktemp -d /tmp/gameclockd-deploy.XXXXXX')
 scp -q "$bin" "$host:$remote_dir/gameclockd"
 scp -q deploy/gameclockd.service "$host:$remote_dir/gameclockd.service"
+scp -q deploy/config.toml "$host:$remote_dir/config.toml"
 
 enable_cmds=""
 if [ "$mode" = enable ]; then
@@ -69,6 +72,7 @@ fi
 ssh "$host" "set -e
     sudo install -m 755 $remote_dir/gameclockd /usr/local/bin/gameclockd
     sudo install -m 644 $remote_dir/gameclockd.service /etc/systemd/system/gameclockd.service
+    [ -e /etc/gameclockd/config.toml ] || sudo install -D -m 644 $remote_dir/config.toml /etc/gameclockd/config.toml
     rm -rf $remote_dir
     sudo systemctl daemon-reload
     $enable_cmds

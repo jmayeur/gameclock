@@ -43,8 +43,8 @@
 
 ## 6. Deployment (`pi-deployment`)
 
-- [ ] 6.1 Red: add to `scripts/test-deploy.sh`: the script copies `deploy/config.toml`, and the remote command has the guard `[ -e /etc/gameclockd/config.toml ] ||` before the install. Add a test that the unit has `RestartPreventExitStatus=2`. See them fail.
-- [ ] 6.2 Green: change `scripts/deploy.sh` and `deploy/gameclockd.service` (D7). Verify with `scripts/test-deploy.sh` and the unit test in CI.
+- [x] 6.1 Red: add to `scripts/test-deploy.sh`: the script copies `deploy/config.toml`, and the remote command has the guard `[ -e /etc/gameclockd/config.toml ] ||` before the install. Add a test that the unit has `RestartPreventExitStatus=2`. See them fail.
+- [x] 6.2 Green: change `scripts/deploy.sh` and `deploy/gameclockd.service` (D7). Verify with `scripts/test-deploy.sh` and the unit test in CI.
 
 ## 7. Config docs
 
