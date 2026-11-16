@@ -52,12 +52,12 @@
 
 ## 9. On-device verification and measurements
 
-- [ ] 9.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/alerts/measurements.md`.
-- [ ] 9.2 Deploy to the Pi with `scripts/deploy.sh` and start the service. Send `alert panic`, then `alert bedtime`, then `alert bed-flash`. Ask the user to look at the panel: the wheel moves smoothly, the text contrast changes, the large text fits, and the flash is red. Ask if the wheel speed is good.
-- [ ] 9.3 Run "Panic on the Pi": start `panic` each 20 s from a shell loop, wait 5 s, then run `scripts/measure.sh` for 60 s. Record per-thread CPU %, voluntary context switches, and RSS. Do the same for "Bedtime on the Pi". The main thread must use 15% CPU or less in each run.
-- [ ] 9.4 Stop the service. Run `gameclockd --led-show-refresh` by hand with a socket in `/tmp`, and start each alert from a second shell. Record the median and the 5th percentile of the refresh rate during each alert. The median must be 170 Hz or more.
-- [ ] 9.5 Send a message, then `alert panic`, then `clear`. Then send `alert bedtime`, `clear`, and `alert stop`. Ask the user to verify the restart of the message after `panic`, and the clear rules. Verify the `alert=` field of `status`.
-- [ ] 9.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
+- [x] 9.1 Build with `scripts/build-pi.sh` and run `scripts/check-pi-binary.sh`. Record the binary size against main in `openspec/changes/alerts/measurements.md`.
+- [x] 9.2 Deploy to the Pi with `scripts/deploy.sh` and start the service. Send `alert panic`, then `alert bedtime`, then `alert bed-flash`. Ask the user to look at the panel: the wheel moves smoothly, the text contrast changes, the large text fits, and the flash is red. Ask if the wheel speed is good.
+- [x] 9.3 Run "Panic on the Pi": start `panic` each 20 s from a shell loop, wait 5 s, then run `scripts/measure.sh` for 60 s. Record per-thread CPU %, voluntary context switches, and RSS. Do the same for "Bedtime on the Pi". The main thread must use 15% CPU or less in each run.
+- [x] 9.4 Stop the service. Run `gameclockd --led-show-refresh` by hand with a socket in `/tmp`, and start each alert from a second shell. Record the median and the 5th percentile of the refresh rate during each alert. The median must be 170 Hz or more.
+- [x] 9.5 Send a message, then `alert panic`, then `clear`. Then send `alert bedtime`, `clear`, and `alert stop`. Ask the user to verify the restart of the message after `panic`, and the clear rules. Verify the `alert=` field of `status`.
+- [x] 9.6 Start the legacy clock again on the Pi, and verify that `gameclockd` stops.
 
 ## 10. Docs and final verification
 
