@@ -37,11 +37,14 @@ pub enum Command {
     /// Empty the queue, and remove the message on the panel. Remove the
     /// alert on the panel if its clear rule permits it (docs/adr/0018).
     Clear,
-    /// Start the alert, if its priority is higher than the item on the
-    /// panel.
-    Alert(String),
+    /// Start the named alert, if its priority is higher than the item on
+    /// the panel. The loop looks up the name in its alert table. `None` is
+    /// `alert` with no name.
+    Alert(Option<String>),
     /// Remove the alert on the panel.
     StopAlert,
+    /// Read the config file again (docs/adr/0019).
+    Reload,
 }
 
 /// A command line that is not a command.
@@ -63,10 +66,6 @@ pub enum CommandError {
     Color,
     /// A `message` option that is not `--passes` or `--color`.
     UnknownOption(String),
-    /// An `alert` command with no name.
-    NoAlertName,
-    /// An `alert` name that is not a built-in alert.
-    UnknownAlert(String),
 }
 
 impl CommandError {
@@ -84,7 +83,7 @@ impl fmt::Display for CommandError {
             Self::NotUtf8 => f.write_str("the command is not UTF-8 text."),
             Self::Unknown(name) => write!(
                 f,
-                "unknown command '{name}'. The commands are clock, test-pattern, status, message, clear, and alert."
+                "unknown command '{name}'. The commands are clock, test-pattern, status, message, clear, alert, and reload."
             ),
             Self::NoText => f.write_str("the message has no text."),
             Self::TextTooLong => write!(
@@ -104,18 +103,6 @@ impl fmt::Display for CommandError {
                 f,
                 "unknown message option '{option}'. The options are --passes and --color."
             ),
-            Self::NoAlertName => write!(
-                f,
-                "the alert command has no name. The alerts are {}.",
-                Alerts::legacy().names()
-            ),
-            Self::UnknownAlert(name) => {
-                write!(
-                    f,
-                    "unknown alert '{name}'. The alerts are {}.",
-                    Alerts::legacy().names()
-                )
-            }
         }
     }
 }
@@ -139,18 +126,18 @@ pub fn parse_command(line: &[u8]) -> Result<Command, CommandError> {
         return parse_message(rest).map(Command::Message);
     }
     if word == "alert" {
-        return match rest.trim() {
-            "" => Err(CommandError::NoAlertName),
-            "stop" => Ok(Command::StopAlert),
-            name if Alerts::legacy().find(name).is_some() => Ok(Command::Alert(name.to_owned())),
-            name => Err(CommandError::UnknownAlert(name.to_owned())),
-        };
+        return Ok(match rest.trim() {
+            "" => Command::Alert(None),
+            "stop" => Command::StopAlert,
+            name => Command::Alert(Some(name.to_owned())),
+        });
     }
     match text {
         "clock" => Ok(Command::Mode(Mode::Clock)),
         "test-pattern" => Ok(Command::Mode(Mode::TestPattern)),
         "status" => Ok(Command::Status),
         "clear" => Ok(Command::Clear),
+        "reload" => Ok(Command::Reload),
         other => Err(CommandError::Unknown(other.to_owned())),
     }
 }
@@ -187,6 +174,24 @@ fn parse_color(value: &str) -> Option<Rgb888> {
     let rgb = u32::from_str_radix(value, 16).ok()?;
     let [_, r, g, b] = rgb.to_be_bytes();
     Some(Rgb888::new(r, g, b))
+}
+
+/// The reply to `alert` with no name. It lists the names of `alerts`.
+#[must_use]
+pub fn no_alert_name_reply(alerts: &Alerts) -> String {
+    format!(
+        "error: the alert command has no name. The alerts are {}.",
+        alerts.names()
+    )
+}
+
+/// The reply to `alert <name>` when `alerts` has no alert `name`.
+#[must_use]
+pub fn unknown_alert_reply(name: &str, alerts: &Alerts) -> String {
+    format!(
+        "error: unknown alert '{name}'. The alerts are {}.",
+        alerts.names()
+    )
 }
 
 /// The reply to `status`. `messages` is the number of messages on the panel
@@ -233,7 +238,7 @@ mod tests {
         assert_eq!(err, CommandError::Unknown("frobnicate".into()));
         assert_eq!(
             err.reply(),
-            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, and alert."
+            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, and reload."
         );
     }
 
@@ -259,12 +264,12 @@ mod tests {
     // The alert command.
 
     #[test]
-    fn built_in_alerts_parse() {
-        for name in ["panic", "bedtime", "bed-flash"] {
+    fn alert_names_parse() {
+        for name in ["panic", "bedtime", "bed-flash", "fire", "fire now"] {
             let line = format!("alert {name}");
             assert_eq!(
                 parse_command(line.as_bytes()),
-                Ok(Command::Alert(name.to_owned())),
+                Ok(Command::Alert(Some(name.to_owned()))),
                 "{line}"
             );
         }
@@ -273,23 +278,27 @@ mod tests {
 
     #[test]
     fn alert_with_no_name() {
-        assert_eq!(parse_command(b"alert"), Err(CommandError::NoAlertName));
+        assert_eq!(parse_command(b"alert"), Ok(Command::Alert(None)));
+        assert_eq!(parse_command(b"alert  "), Ok(Command::Alert(None)));
+    }
+
+    #[test]
+    fn alert_replies_name_the_table() {
+        let legacy = gameclock_core::alert::Alerts::legacy();
         assert_eq!(
-            reply("alert  "),
+            no_alert_name_reply(&legacy),
             "error: the alert command has no name. The alerts are panic, bedtime, and bed-flash."
+        );
+        assert_eq!(
+            unknown_alert_reply("fire", &legacy),
+            "error: unknown alert 'fire'. The alerts are panic, bedtime, and bed-flash."
         );
     }
 
     #[test]
-    fn unknown_alert() {
-        assert_eq!(
-            reply("alert fire"),
-            "error: unknown alert 'fire'. The alerts are panic, bedtime, and bed-flash."
-        );
-        assert_eq!(
-            parse_command(b"alert fire now"),
-            Err(CommandError::UnknownAlert("fire now".into()))
-        );
+    fn reload_parses() {
+        assert_eq!(parse_command(b"reload"), Ok(Command::Reload));
+        assert!(parse_command(b"reload now").is_err());
     }
 
     // The message command.

@@ -78,6 +78,12 @@ impl Board {
         }
     }
 
+    /// Use `schedule` for the brightness of new scenes. The scene on the
+    /// panel keeps its schedule.
+    pub fn set_schedule(&mut self, schedule: Schedule) {
+        self.schedule = schedule;
+    }
+
     /// Remove the finished scenes. If nothing shows, start the first message
     /// of the queue at `now`.
     pub fn advance(&mut self, now: &Zoned, compositor: &mut Compositor) {
@@ -460,5 +466,20 @@ mod tests {
         assert!(c.update(&at(0)).is_some());
         b.stop_alert(&at(0), &mut c);
         assert!(c.update(&at(0)).is_none(), "the image does not change");
+    }
+
+    // The reload command gives a new schedule (`openspec/specs/daemon-config`).
+
+    #[test]
+    fn new_scenes_use_the_new_schedule() {
+        use crate::Brightness;
+        use crate::schedule::Style;
+        use embedded_graphics::pixelcolor::Rgb888;
+        let (mut b, mut c) = setup();
+        let dim = Style::new(Rgb888::new(0, 0, 255), Brightness::new(7));
+        b.set_schedule(Schedule::new(Vec::new(), dim));
+        b.message(msg("HI"), &at(0), &mut c).unwrap();
+        let (_, brightness) = c.update(&at(40)).unwrap();
+        assert_eq!(brightness, Brightness::new(7));
     }
 }

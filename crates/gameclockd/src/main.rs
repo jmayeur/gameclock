@@ -101,6 +101,7 @@ fn main() -> ExitCode {
             args.mode.base_scene(&tables.schedule),
             args.mode,
             tables,
+            || config::load(&args.config, args.config_origin).map(|loaded| loaded.tables),
             &clock,
             &mut wait,
         )

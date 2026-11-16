@@ -303,7 +303,7 @@ mod tests {
         let path = serving(&temp_dir(), answering_loop());
         assert_eq!(
             send(&path, b"frobnicate\n"),
-            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, and alert."
+            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, and reload."
         );
         assert_eq!(
             send(&path, &[b'a'; 300]),
