@@ -1,6 +1,6 @@
 # Architecture
 
-> The state after `configurable-schedule`. Sections marked **Planned** give the agreed
+> The state after `web-control`. Sections marked **Planned** give the agreed
 > direction (ADRs 0004–0006). They become current as OpenSpec changes merge.
 
 ## Shape
@@ -11,7 +11,9 @@
   (tz-aware)    │   event loop: sleep until next visual change or event          │
                 │        │                ▲ event channel                        │
   commands  ───▶│ control thread ─────────┤                                      │
-  (Unix socket) │ signals thread ─────────┘                                      │
+  (Unix socket) │ web thread ─────────────┤                                      │
+  web page  ───▶│ signals thread ─────────┘                                      │
+  (HTTP, :80)   │                                                                │
   signals   ───▶│        ▼                                                       │
                 │   gameclock-core (pure) ──renders──▶ Frame ──changed?──▶ Panel ──┼──▶ LED matrix
                 │   scenes · schedule ·                (64×32 RGB)          .present│
@@ -31,7 +33,7 @@
 - **`gameclockd`** (exists): the daemon. It checks arguments, handles signals,
   reads the time zone, selects the panel by build feature, and runs the event
   loop below. It also runs the control socket and the `ctl` client
-  (ADR-0016). Its `config` module reads the config file with serde and
+  (ADR-0016), and the web page (ADR-0020). Its `config` module reads the config file with serde and
   `toml` (ADR-0019).
 - **`rgbmatrix-sys`** (exists): the LED driver, and the only crate with
   `unsafe` (ADR-0004, ADR-0009).
@@ -160,6 +162,18 @@
   accepts one connection at a time. It gives each client 1 s for its line and
   the loop 2 s for the reply. `send_command` is the client of
   `gameclockd ctl`.
+- **`http`** (`gameclockd`, ADR-0020): a pure parser for a small HTTP/1.1
+  subset, and `Response`. A head over 8 KiB, a body over 1 KiB, a post with
+  no `Content-Length`, and a bad request line are refused with a status.
+  Each response closes the connection.
+- **`web`** (`gameclockd`, ADR-0020): `route` gives the response to a
+  request. It sends the same `Command`s as the socket through an `ask`
+  function. The page asks the loop for the status and for the alert names
+  (`Command::AlertNames`, which the socket parser cannot make). A post with
+  an `Origin` of a different host gets 403. The `web` thread accepts one
+  connection at a time. It gives each client 2 s for the whole request and
+  2 s to read the response. Then it discards the rest of the request for
+  500 ms at most.
 
 ## Daemon lifecycle
 
@@ -170,8 +184,9 @@
    with one space. It sends them as one command, writes the
    reply, and exits: 0 for `ok`, 1 for an error, and 2 for a usage error.
    Otherwise it accepts hzeller `--led-*` flags, `--test-pattern`,
-   `--control-socket=<path>`, and `--config=<path>`. It gives the mode, the
-   socket path, the config path, and the driver flags in their order. Any
+   `--control-socket=<path>`, `--config=<path>`, and `--http=<address>` or
+   `--http=off`. It gives the mode, the socket path, the config path, the
+   web address (default `0.0.0.0:80`), and the driver flags in their order. Any
    other argument exits 2 before the daemon touches the panel.
 2. **Config.** `config::load` reads the config file (default
    `/etc/gameclockd/config.toml`). An error writes the path, the line, the
@@ -188,7 +203,10 @@
    the socket (default `/run/gameclockd/control.sock`) and starts the
    `control` thread. If it cannot, it writes a warning and runs with no
    command input.
-5. **Panel, selected at build time.** There are three builds:
+5. **Web page.** While the process is still root, the daemon listens for
+   HTTP on the web address, starts the `web` thread, and writes the address.
+   If it cannot, it writes a warning and runs with no web page (ADR-0020).
+6. **Panel, selected at build time.** There are three builds:
    - `hzeller` (the Pi build, `scripts/build-pi.sh`): `HzellerPanel::new`
      receives the flags.
    - `simulator` (`cargo sim`): `TerminalPanel` draws on stdout.
@@ -196,7 +214,7 @@
 
    Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
    build with `hzeller` and `simulator` together stops with a compile error.
-6. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
+7. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
    a `Board` and the `Triggers` of the config tables. Then it loops:
    1. It gets the time from the clock. The board removes the finished
       scenes. If nothing shows, it starts the first message of the queue as
@@ -225,7 +243,7 @@
         start again from now, and the clock gets the new schedule. The scene
         on the panel continues. A file with an error gives an error reply,
         and the tables do not change.
-7. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
+8. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
    file, and the process exits 0. hzeller stops its refresh thread and
    blanks the LEDs. A panel error exits 1 with the message on stderr.
 
@@ -238,10 +256,16 @@ only, for the socket and removes it at stop (ADR-0016). On the Pi, the
 driver drops root privileges after the socket exists, so the daemon cannot
 remove the socket file. The removal of the directory does that.
 
+The service binds port 80 as root, before the driver drops the privileges.
+The deploy stops the legacy nginx and PM2, which hold port 80 and run the
+legacy Node page. The rollback starts them again. PM2 needs about 5 minutes
+on the Pi, so the rollback starts it with no wait (ADR-0020).
+
 ## Data flow
 
-1. The loop wakes at a deadline (the next visual change or the next trigger
-   time), on a command, or on a stop signal.
+1. The loop wakes at a deadline: the next visual change or the next trigger
+   time. It also wakes on a command from the socket or the web page, and on
+   a stop signal.
 2. It gives the injected time to the compositor. The compositor renders the
    top scene into a `Frame`.
 3. If the frame or the brightness is different from the last presented

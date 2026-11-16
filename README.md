@@ -9,7 +9,8 @@ for one ARMv6 core.
 > status` talks to the running daemon. `sudo gameclockd ctl message hello`
 > scrolls a message. `sudo gameclockd ctl alert panic` shows an alert, and
 > the bedtime warning starts on its own on bedtime nights. A config file sets
-> the schedule, the alerts, and the triggers. More features come
+> the schedule, the alerts, and the triggers. A web page at
+> `http://<the Pi>/` sends messages and alerts from a phone. More features come
 > one at a time, through [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
 
@@ -54,6 +55,10 @@ openspec/           specs and changes
 alerts, and the bedtime triggers. After an edit, send
 `sudo gameclockd ctl reload`. [`docs/config.md`](docs/config.md) gives each
 key and its limits.
+
+The web page listens on `0.0.0.0:80`. `--http=<address>` gives a different
+address, and `--http=off` turns it off. Any device on the home network can
+use it, with no login.
 
 ## Develop
 

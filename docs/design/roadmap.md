@@ -49,10 +49,18 @@ and scope can change. Update this file when a change merges or a plan changes.
    the file again. A file with an error stops the start (ADR-0019,
    `docs/config.md`). This replaces the abandoned legacy admin page.
 
+## Web control
+
+9. **`web-control`**: **done**. `gameclockd` serves the web page on port 80
+   with its own small HTTP server. The page sends messages and alerts, and
+   it has clear and stop-alert buttons. The legacy buttons continue to work.
+   The deploy stops nginx, PM2, and Node, and the Pi gets back about 106 MB
+   of RSS (ADR-0020).
+
 ## Later candidates
 
-- **`web-control`**: HTTP in the daemon replaces the Node 10 server. This
-  saves RAM and removes Node from the Pi.
+- Remove nginx, PM2, and Node from the Pi after some weeks of use. The
+  rollback needs them until then.
 - Priorities, layers, and overlays, for example a clock with a message ticker.
   Transitions between scenes.
 - Data-driven scenes: calendar events (the legacy events sync), weather, and

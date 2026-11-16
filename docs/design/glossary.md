@@ -104,7 +104,19 @@
 - **Reload**: the `reload` command. It reads the config file again. A
   file with no errors applies at once, and a file with an error changes
   nothing.
-- **Event channel**: the channel that the loop waits on. The signal thread
-  and the control thread send events to it (ADR-0016).
+- **Event channel**: the channel that the loop waits on. The signal thread,
+  the control thread, and the web thread send events to it (ADR-0016,
+  ADR-0020).
+- **Web page**: the HTML page of `gameclockd` at `http://<the Pi>/`. It
+  shows the status and sends messages, alerts, `clear`, and `alert stop`
+  as commands to the loop (ADR-0020).
+- **Web listener**: the TCP listener of the web page, by default on
+  `0.0.0.0:80`. `--http=<address>` changes it, and `--http=off` turns it
+  off. The `web` thread serves one connection at a time.
+- **Origin test**: the web page refuses a post whose `Origin` header names a
+  different host or port than the `Host` header. Then a page on the internet
+  cannot post through a browser on the LAN.
+- **Legacy web stack**: nginx on port 80, PM2, and the Node 10 server on
+  port 3000. The deploy stops it, and the rollback starts it again.
 - **Semaphore file**: the legacy command channel (`msg.txt` holding
   `msg=<value>`).

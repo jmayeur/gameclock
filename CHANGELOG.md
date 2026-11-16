@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Web page (OpenSpec `web-control`, ADR-0020):
+  - `gameclockd`: the `http` module (a small HTTP/1.1 parser with limits)
+    and the `web` module (the routes, the forms, the page, and the `web`
+    thread). `GET /`, `POST /message`, `POST /alert`, `POST /alert/stop`,
+    `POST /clear`, and `GET /health`. The legacy values `panic88` and
+    `bedtime` start their alerts.
+  - `--http=<address>` and `--http=off`. The default is `0.0.0.0:80`.
+  - A post from a different site gets 403. No CORS headers.
+  - `scripts/deploy.sh` stops nginx and PM2. `--enable` disables them at
+    boot, and `--rollback` starts them again.
+
 - Config file (OpenSpec `configurable-schedule`, ADR-0019):
   - `gameclockd`: the `config` module reads `/etc/gameclockd/config.toml`,
     or the path of `--config=<path>`, with `serde` and `toml`. The sections
