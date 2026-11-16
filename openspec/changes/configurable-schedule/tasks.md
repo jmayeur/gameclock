@@ -48,7 +48,7 @@
 
 ## 7. Config docs
 
-- [ ] 7.1 Write `docs/config.md`, and link it from the README. It gives the path, the sections, each key and its limit, and the built-in defaults. It also gives the steps to edit the file and to send `reload`. Verify with `scripts/lint-docs.sh`.
+- [x] 7.1 Write `docs/config.md`, and link it from the README. It gives the path, the sections, each key and its limit, and the built-in defaults. It also gives the steps to edit the file and to send `reload`. Verify with `scripts/lint-docs.sh`.
 
 ## 8. Simulator verification
 

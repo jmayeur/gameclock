@@ -33,18 +33,26 @@ result is flicker. So the design keeps the app out of the way:
 ```
 crates/
   gameclock-core/   pure logic: Frame, Panel, scenes, compositor (no hardware, no I/O)
-  gameclockd/       the daemon: arguments, signals, panel choice, lifecycle
+  gameclockd/       the daemon: arguments, config, signals, panel choice, lifecycle
   rgbmatrix-sys/    hzeller FFI and HzellerPanel (the only crate with unsafe)
 vendor/
   rpi-rgb-led-matrix/  hzeller's driver, a pinned git submodule
-deploy/             systemd unit
+deploy/             systemd unit and the example config
 scripts/            Pi build, deploy, measurement, and doc lint, with tests
 docs/
+  config.md         the config file: schedule, alerts, and triggers
   adr/              architecture decision records (why)
   design/           how the system works now, roadmap, legacy reference (what)
   hardware/         Pi Zero W and HAT facts and tuning notes
 openspec/           specs and changes
 ```
+
+## Configure
+
+`/etc/gameclockd/config.toml` sets the clock colors and brightness, the
+alerts, and the bedtime triggers. After an edit, send
+`sudo gameclockd ctl reload`. [`docs/config.md`](docs/config.md) gives each
+key and its limits.
 
 ## Develop
 
