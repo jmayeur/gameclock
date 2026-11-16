@@ -140,8 +140,9 @@ both the hzeller driver and the simulator SHALL fail.
 
 ### Requirement: Command-line arguments
 The daemon SHALL accept hzeller `--led-*` flags, `--test-pattern`,
-`--control-socket=<path>`, and `--config=<path>` as arguments. It SHALL give the `--led-*` flags to
-the driver in their order, without the other arguments. Any other argument
+`--control-socket=<path>`, `--config=<path>`, and `--http=<address>` as
+arguments. `--http=off` SHALL turn the web listener off. It SHALL give the
+`--led-*` flags to the driver in their order, without the other arguments. Any other argument
 SHALL cause a usage error and exit status 2, before the daemon touches the
 panel. A build without the hzeller driver SHALL accept and ignore `--led-*`
 flags, with a notice.
@@ -175,6 +176,23 @@ flags, with a notice.
 #### Scenario: Empty socket path is a usage error
 - **WHEN** `gameclockd` is started with `--control-socket=`
 - **THEN** it exits with status 2, and standard error names `--control-socket`
+
+#### Scenario: Default web address
+- **WHEN** the arguments have no `--http`
+- **THEN** the web address is `0.0.0.0:80`
+
+#### Scenario: Web address is not a driver flag
+- **WHEN** the arguments are `--http=127.0.0.1:8080` and `--led-pwm-bits=8`
+- **THEN** the web address is `127.0.0.1:8080`
+- **AND** the driver flags are `--led-pwm-bits=8` only
+
+#### Scenario: Web listener off
+- **WHEN** the arguments have `--http=off`
+- **THEN** the daemon has no web address
+
+#### Scenario: Bad web address is a usage error
+- **WHEN** `gameclockd` is started with `--http=` or with `--http=clock:eighty`
+- **THEN** it exits with status 2, and standard error names `--http` and gives an example address
 
 ### Requirement: The daemon presents at the scene's brightness
 Each present SHALL use the brightness that the compositor gives with the
