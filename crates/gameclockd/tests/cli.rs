@@ -28,8 +28,12 @@ impl Daemon {
     }
 
     fn spawn_with_env(args: &[&str], env: &[(&str, &str)]) -> Self {
+        // A test that does not give a web address gets no web page. Then
+        // the tests do not try to use port 80 at the same time.
+        let web_off = (!args.iter().any(|a| a.starts_with("--http="))).then_some("--http=off");
         let mut child = Command::new(env!("CARGO_BIN_EXE_gameclockd"))
             .args(args)
+            .args(web_off)
             .envs(env.iter().copied())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -170,6 +174,37 @@ fn ctl(args: &[&str]) -> (Option<i32>, String, String) {
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),
     )
+}
+
+/// The start of the line that gives the web address.
+#[cfg_attr(feature = "simulator", allow(dead_code))]
+const WEB_LINE: &str = "gameclockd: web page at http://";
+
+/// Wait for the web address line. Give the port.
+#[cfg_attr(feature = "simulator", allow(dead_code))]
+fn web_port(d: &mut Daemon) -> u16 {
+    d.wait_for(WEB_LINE);
+    let line = d.seen.iter().find(|l| l.contains(WEB_LINE)).unwrap();
+    let address = line.rsplit("http://").next().unwrap().trim_end_matches('/');
+    address.rsplit(':').next().unwrap().parse().expect("a port")
+}
+
+/// Send `request` to the web port and read until the daemon closes the
+/// connection.
+#[cfg_attr(feature = "simulator", allow(dead_code))]
+fn web(port: u16, request: &[u8]) -> String {
+    use std::io::Write;
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("read timeout");
+    // The daemon can close before it reads all of a refused request.
+    let _ = stream.write_all(request);
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .expect("read the response");
+    String::from_utf8_lossy(&response).into_owned()
 }
 
 /// Tests of the default host build, which uses the logging panel.
@@ -376,6 +411,137 @@ mod log_panel {
             d.presents_seen() > before,
             "no present during the connection"
         );
+    }
+
+    // The web page (`openspec/specs/web-control`).
+
+    const LOCAL: &str = "--http=127.0.0.1:0";
+
+    #[test]
+    fn listen_on_a_given_address() {
+        let mut d = Daemon::spawn(&[LOCAL]);
+        let port = web_port(&mut d);
+        let response = web(port, b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+        assert!(response.ends_with(r#"{"status":"ok"}"#), "{response}");
+    }
+
+    #[test]
+    fn web_page_off() {
+        let mut d = Daemon::spawn(&["--http=off"]);
+        d.wait_for(READY);
+        d.signal("TERM");
+        assert_eq!(d.exit_within(Duration::from_secs(1)).code(), Some(0));
+        d.drain();
+        assert!(!d.stderr_contains("http://"), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
+    fn one_response_then_close() {
+        let mut d = Daemon::spawn(&[LOCAL]);
+        let port = web_port(&mut d);
+        let response = web(
+            port,
+            b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+        );
+        // `web` reads to the end, so the daemon closed the connection.
+        assert!(response.contains("\r\nConnection: close\r\n"), "{response}");
+    }
+
+    #[test]
+    fn address_in_use() {
+        let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = taken.local_addr().unwrap();
+        let mut d = Daemon::spawn(&[&format!("--http={address}")]);
+        d.wait_for(READY);
+        let warning = format!("gameclockd: cannot listen on http://{address}:");
+        assert!(
+            d.seen.iter().any(
+                |l| l.starts_with(&warning) && l.ends_with("The daemon runs with no web page.")
+            ),
+            "stderr: {:?}",
+            d.seen
+        );
+        d.signal("TERM");
+        assert_eq!(d.exit_within(Duration::from_secs(1)).code(), Some(0));
+    }
+
+    #[test]
+    fn slow_client() {
+        let mut d = Daemon::spawn(&[LOCAL]);
+        let port = web_port(&mut d);
+        let start = Instant::now();
+        let response = web(port, b"GET / HTTP/1.1\r\n");
+        let took = start.elapsed();
+        assert!(response.starts_with("HTTP/1.1 408 "), "{response}");
+        assert!(took >= Duration::from_millis(1_900), "{took:?}");
+        assert!(took < Duration::from_secs(3), "{took:?}");
+    }
+
+    #[test]
+    fn headers_that_do_not_end() {
+        let mut d = Daemon::spawn(&[LOCAL]);
+        let port = web_port(&mut d);
+        let mut request = b"GET / HTTP/1.1\r\nX-Long: ".to_vec();
+        request.extend(std::iter::repeat_n(b'a', 9000));
+        let response = web(port, &request);
+        assert!(response.starts_with("HTTP/1.1 431 "), "{response}");
+    }
+
+    #[test]
+    fn body_too_large() {
+        let mut d = Daemon::spawn(&[LOCAL]);
+        let port = web_port(&mut d);
+        let response = web(
+            port,
+            b"POST /message HTTP/1.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 2000\r\n\r\n",
+        );
+        assert!(response.starts_with("HTTP/1.1 413 "), "{response}");
+    }
+
+    #[test]
+    fn post_with_no_length() {
+        let mut d = Daemon::spawn(&[LOCAL]);
+        let port = web_port(&mut d);
+        let response = web(
+            port,
+            b"POST /message HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n6\r\nmsg=hi\r\n0\r\n\r\n",
+        );
+        assert!(response.starts_with("HTTP/1.1 411 "), "{response}");
+    }
+
+    #[test]
+    fn a_slow_client_does_not_stop_the_clock() {
+        let path = socket_in_temp_dir("web-slow");
+        let mut d = Daemon::spawn(&["--test-pattern", LOCAL, &socket_arg(&path)]);
+        let port = web_port(&mut d);
+        d.wait_for(READY);
+        let _silent = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let before = d.presents_seen();
+        let (code, out, _) = ctl(&[&socket_arg(&path), "status"]);
+        assert_eq!(code, Some(0), "stdout: {out}");
+        std::thread::sleep(Duration::from_millis(1_100));
+        d.collect();
+        assert!(
+            d.presents_seen() > before,
+            "no present during the connection"
+        );
+    }
+
+    #[test]
+    fn message_from_the_web_page() {
+        let path = socket_in_temp_dir("web-message");
+        let mut d = Daemon::spawn(&[LOCAL, &socket_arg(&path)]);
+        let port = web_port(&mut d);
+        d.wait_for(READY);
+        let response = web(
+            port,
+            b"POST /message HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 6\r\n\r\nmsg=hi",
+        );
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+        let (code, out, _) = ctl(&[&socket_arg(&path), "status"]);
+        assert_eq!(code, Some(0), "stdout: {out}");
+        assert!(out.contains(" messages=1 "), "{out}");
     }
 
     #[test]

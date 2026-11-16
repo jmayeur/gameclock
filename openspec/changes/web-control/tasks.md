@@ -22,7 +22,7 @@
 - [x] 3.6 Green: add the page with its style in the HTML, the HTML escape, and the parse of the `status` reply (D4). Verify that the 3.5 tests pass. The listener comes in 5.4, so the user looks at the page in a browser in 7.1.
 - [x] 3.7 Red: write "Health with a loop" and "Health with no answer". See them fail.
 - [x] 3.8 Green: add `GET /health`. Verify that the 3.7 tests pass.
-- [x] 3.9 Red: write "Post from the page", "Post from another site", an `Origin` of `null`, an `Origin` with a different port, and "No CORS headers". See them fail. "Post from another site" failed. "Post from the page" and "No CORS headers" passed at once: with no check, each post works, and no response had CORS headers. They guard that behavior.
+- [x] 3.9 Red: write "Post from the page", "Post from another site", an `Origin` of `null`, an `Origin` with a different port, and "No CORS headers". See them fail. "Post from another site" failed. "Post from the page" and "No CORS headers" passed at once: with no origin test, each post works, and no response had CORS headers. They guard that behavior.
 - [x] 3.10 Green: add the `Origin` test of each post (D6). Verify that the 3.9 tests pass.
 
 ## 4. The loop (`web-control`)
@@ -34,8 +34,8 @@
 
 - [x] 5.1 Red: write `parse_args` tests for "Default web address" and "Web address is not a driver flag". Also write "Web listener off" and "Bad web address is a usage error". See them fail.
 - [x] 5.2 Green: add `--http=<address>` and `--http=off` to `Args` (D7). Verify that the 5.1 tests pass.
-- [ ] 5.3 Red: write `tests/cli.rs` tests with a real `TcpStream`. Write "Listen on a given address", "Off", "One response, then close", and "Address in use". Write "Slow client" (408 in less than 3 s), "Headers that do not end", "Body too large", and "Post with no length". Write "A slow client does not stop the clock": a held connection, and a `status` on the socket that gets its reply during the hold. Write a test that sends `POST /message` and then reads `status` on the socket with `messages=1`. Change the CLI tests that start the daemon to pass `--http=127.0.0.1:0` or `--http=off`. See them fail.
-- [ ] 5.4 Green: add the listener thread with the total read limit and the write timeout (D2). Bind it in `main.rs` after the socket and before the panel, write the address line or the warning (D7). Verify that the 5.3 tests and all CLI tests pass in the default and the `simulator` builds.
+- [x] 5.3 Red: write `tests/cli.rs` tests with a real `TcpStream`. Write "Listen on a given address", "Off", "One response, then close", and "Address in use". Write "Slow client" (408 in less than 3 s), "Headers that do not end", "Body too large", and "Post with no length". Write "A slow client does not stop the clock": a held connection, and a `status` on the socket that gets its reply during the hold. Write a test that sends `POST /message` and then reads `status` on the socket with `messages=1`. Change the CLI tests that start the daemon to pass `--http=127.0.0.1:0` or `--http=off`. See them fail. Nine failed with no web line. "Off" passed at once, because no listener existed. `Daemon::spawn` adds `--http=off` when a test gives no address.
+- [x] 5.4 Green: add the listener thread with the total read limit and the write timeout (D2). Bind it in `main.rs` after the socket and before the panel, write the address line or the warning (D7). Verify that the 5.3 tests and all CLI tests pass in the default and the `simulator` builds. The thread also discards the rest of a request after the response (design D2). With the discard turned off, the macOS tests still passed, so no host test shows the reset that it prevents.
 
 ## 6. Deployment (`pi-deployment`)
 

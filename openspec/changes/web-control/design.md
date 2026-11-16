@@ -74,6 +74,11 @@ The subset:
   each second still stops at 2 s.
 - The write has a timeout of 2 s, so a client that does not read cannot
   hold the thread.
+- After the response, the thread closes its write side. Then it reads and
+  discards the rest of the request for 500 ms at most, with a buffer of
+  1 KiB. On Linux, a close with unread bytes sends a reset, and the client
+  can lose the response, for example a 431 or a 413. The host tests on
+  macOS do not show this reset.
 - One connection at a time: the worst wait for a second client is about
   4 s (2 s to read, 2 s for the loop). The family sends one command at a
   time, so this is acceptable. ADR-0020 records the trade-off.

@@ -19,7 +19,7 @@ use gameclockd::{
     ChannelWait, Event, Invocation, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args,
     run,
 };
-use gameclockd::{config, control};
+use gameclockd::{config, control, web};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -73,7 +73,7 @@ fn main() -> ExitCode {
     // Make the socket while the process is still root. The driver drops the
     // privileges when it starts (docs/adr/0016).
     let listening = match control::listen(&args.socket) {
-        Ok(listener) => match control::spawn(listener, events) {
+        Ok(listener) => match control::spawn(listener, events.clone()) {
             Ok(()) => true,
             Err(e) => {
                 no_commands(&args.socket, &e);
@@ -85,6 +85,16 @@ fn main() -> ExitCode {
             false
         }
     };
+    // Bind the web port while the process is still root, before the driver
+    // drops the privileges (docs/adr/0020).
+    if let Some(address) = args.http {
+        match start_web(address, events) {
+            Ok(local) => eprintln!("gameclockd: web page at http://{local}/"),
+            Err(e) => eprintln!(
+                "gameclockd: cannot listen on http://{address}: {e}. The daemon runs with no web page."
+            ),
+        }
+    }
 
     let result = {
         let mut panel = match panel::create(&args.driver) {
@@ -118,6 +128,18 @@ fn main() -> ExitCode {
         eprintln!("gameclockd: {e}");
     }
     ExitCode::from(exit_status(&result))
+}
+
+/// Listen for HTTP and start the web thread. Give the address with the
+/// port that the system gave.
+fn start_web(
+    address: std::net::SocketAddr,
+    events: mpsc::Sender<Event>,
+) -> std::io::Result<std::net::SocketAddr> {
+    let listener = web::listen(address)?;
+    let local = listener.local_addr()?;
+    web::spawn(listener, events)?;
+    Ok(local)
 }
 
 /// Write the warning for a socket that the daemon cannot use.

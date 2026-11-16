@@ -3,10 +3,132 @@
 //!
 //! The routes are pure functions. The listener thread only moves bytes.
 
+use std::io::{self, Read, Write};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
 use gameclock_core::message::Message;
 
 use crate::command::{Command, CommandError, NO_ANSWER, parse_color};
-use crate::http::{Request, Response, Status};
+use crate::control::ask_loop;
+use crate::http::{MAX_BODY, MAX_HEAD, Parse, Request, Response, Status, parse};
+use crate::{Event, THREAD_STACK};
+
+/// The time a client has for its whole request, from `accept`.
+pub const READ_LIMIT: Duration = Duration::from_secs(2);
+
+/// The time a client has to read the response.
+pub const WRITE_LIMIT: Duration = Duration::from_secs(2);
+
+/// After the response, the thread reads and discards the rest of the
+/// request for this time at most. A close with unread bytes can remove the
+/// response before the client reads it.
+const LINGER_LIMIT: Duration = Duration::from_millis(500);
+
+/// The most bytes that the thread discards after a response.
+const LINGER_BYTES: usize = 64 * 1024;
+
+/// Listen for HTTP on `address`.
+///
+/// # Errors
+/// The error of the bind.
+pub fn listen(address: SocketAddr) -> io::Result<TcpListener> {
+    TcpListener::bind(address)
+}
+
+/// Start the web thread. It serves one connection at a time and sends each
+/// command to the loop on `events`.
+///
+/// # Errors
+/// The error of the thread start.
+pub fn spawn(listener: TcpListener, events: mpsc::Sender<Event>) -> io::Result<()> {
+    std::thread::Builder::new()
+        .name("web".into())
+        .stack_size(THREAD_STACK)
+        .spawn(move || serve(&listener, &events))?;
+    Ok(())
+}
+
+fn serve(listener: &TcpListener, events: &mpsc::Sender<Event>) {
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => handle(stream, events),
+            // A failed accept affects one client only. Pause, so that an
+            // error that stays does not use the CPU.
+            Err(_) => std::thread::sleep(Duration::from_millis(100)),
+        }
+    }
+}
+
+/// Read one request, write one response, and close the connection.
+fn handle(mut stream: TcpStream, events: &mpsc::Sender<Event>) {
+    let response = match read_request(&mut stream) {
+        Ok(request) => route(&request, &mut |command| match ask_loop(events, command) {
+            Some(reply) => Reply::Answer(reply),
+            None => Reply::NoAnswer,
+        }),
+        Err(status) => Response::refusal(status),
+    };
+    // The client can be gone. There is nobody to tell.
+    if stream.set_write_timeout(Some(WRITE_LIMIT)).is_ok()
+        && stream.write_all(&response.to_bytes()).is_ok()
+    {
+        linger(&mut stream);
+    }
+}
+
+/// Read until the bytes have a complete request, in [`READ_LIMIT`] from now.
+/// The buffer never holds more than one head and one body.
+fn read_request(stream: &mut TcpStream) -> Result<Request, Status> {
+    let end = Instant::now() + READ_LIMIT;
+    let limit = MAX_HEAD + MAX_BODY + 1;
+    let mut bytes = Vec::with_capacity(limit);
+    let mut chunk = [0_u8; 1024];
+    loop {
+        match parse(&bytes) {
+            Parse::Complete(request) => return Ok(request),
+            Parse::Refused(status) => return Err(status),
+            Parse::Partial => {}
+        }
+        let room = limit.saturating_sub(bytes.len()).min(chunk.len());
+        let left = end.saturating_duration_since(Instant::now());
+        if room == 0 {
+            return Err(Status::BadRequest);
+        }
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return Err(Status::RequestTimeout);
+        }
+        match stream.read(chunk.get_mut(..room).unwrap_or_default()) {
+            // The client stopped before a complete request.
+            Ok(0) => return Err(Status::BadRequest),
+            Ok(n) => bytes.extend_from_slice(chunk.get(..n).unwrap_or_default()),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(_) => return Err(Status::RequestTimeout),
+        }
+    }
+}
+
+/// Close the write side, then read and discard what the client still sends,
+/// for a short time. Then the client gets the whole response.
+fn linger(stream: &mut TcpStream) {
+    if stream.shutdown(Shutdown::Write).is_err() {
+        return;
+    }
+    let end = Instant::now() + LINGER_LIMIT;
+    let mut chunk = [0_u8; 1024];
+    let mut discarded = 0;
+    while discarded < LINGER_BYTES {
+        let left = end.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return;
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => discarded += n,
+        }
+    }
+}
 
 /// The type of a form body.
 const FORM_TYPE: &str = "application/x-www-form-urlencoded";

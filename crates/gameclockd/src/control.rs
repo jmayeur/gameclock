@@ -106,16 +106,20 @@ fn handle(mut stream: UnixStream, events: &mpsc::Sender<Event>) {
 
 /// Send `command` to the loop and wait for its reply.
 fn ask(events: &mpsc::Sender<Event>, command: crate::command::Command) -> String {
+    ask_loop(events, command).unwrap_or_else(|| NO_ANSWER.to_owned())
+}
+
+/// Send `command` to the loop and wait for its reply line. Give `None` if
+/// the loop does not answer in [`ANSWER_LIMIT`].
+pub(crate) fn ask_loop(
+    events: &mpsc::Sender<Event>,
+    command: crate::command::Command,
+) -> Option<String> {
     let (reply, answer) = mpsc::channel();
-    if events
+    events
         .send(Event::Command(Request { command, reply }))
-        .is_err()
-    {
-        return NO_ANSWER.to_owned();
-    }
-    answer
-        .recv_timeout(ANSWER_LIMIT)
-        .unwrap_or_else(|_| NO_ANSWER.to_owned())
+        .ok()?;
+    answer.recv_timeout(ANSWER_LIMIT).ok()
 }
 
 /// The time the client waits for the reply.

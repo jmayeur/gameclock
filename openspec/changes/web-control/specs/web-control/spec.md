@@ -150,7 +150,7 @@ body, close the connection, and send no command to the loop.
 
 #### Scenario: Headers that do not end
 - **WHEN** a client sends a request line and then 9000 bytes of one header with no line end
-- **THEN** the response is status 431, and the daemon reads no more than 8 KiB of the request head
+- **THEN** the response is status 431, and the daemon keeps no more than 8 KiB of the request head
 
 #### Scenario: Body too large
 - **WHEN** a client posts to `/message` with `Content-Length: 2000`
