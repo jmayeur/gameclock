@@ -12,6 +12,7 @@ pub mod sim;
 pub mod command;
 pub mod config;
 pub mod control;
+pub mod http;
 
 use command::{Command, OK, no_alert_name_reply, status_reply, unknown_alert_reply};
 use config::{ConfigError, Origin};
