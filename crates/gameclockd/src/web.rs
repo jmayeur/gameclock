@@ -30,6 +30,13 @@ pub enum Reply {
 /// gives its reply.
 pub fn route(request: &Request, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
     let method = request.method.as_str();
+    if request.path == "/health" {
+        return if method == "GET" {
+            health(ask)
+        } else {
+            Response::refusal(Status::MethodNotAllowed).with_header("Allow", "GET")
+        };
+    }
     let (allow, action): (&str, Option<Action>) = match request.path.as_str() {
         "/" => ("GET", None),
         "/message" => ("POST", Some(Action::Message)),
@@ -44,6 +51,17 @@ pub fn route(request: &Request, ask: &mut dyn FnMut(Command) -> Reply) -> Respon
     match action {
         None => page(Status::Ok, None, ask),
         Some(action) => post(request, action, ask),
+    }
+}
+
+/// The type of the health response.
+const JSON: &str = "application/json; charset=utf-8";
+
+/// The health check: the loop answers a `status` command, or not.
+fn health(ask: &mut dyn FnMut(Command) -> Reply) -> Response {
+    match ask(Command::Status) {
+        Reply::Answer(_) => Response::new(Status::Ok, JSON, r#"{"status":"ok"}"#),
+        Reply::NoAnswer => Response::new(Status::Unavailable, JSON, r#"{"status":"no answer"}"#),
     }
 }
 
@@ -468,6 +486,47 @@ mod tests {
                     .to_owned()
             )]
         );
+    }
+
+    /// Route `request`, and give all the commands that the loop got.
+    fn all_commands(request: &Request, reply: fn(&Command) -> Reply) -> (Response, Vec<Command>) {
+        let mut seen = Vec::new();
+        let response = route(request, &mut |command| {
+            let answer = reply(&command);
+            seen.push(command);
+            answer
+        });
+        (response, seen)
+    }
+
+    #[test]
+    fn health_with_a_loop() {
+        let (response, seen) = all_commands(&request("GET /health HTTP/1.1\r\n\r\n"), loop_reply);
+        assert_eq!(seen, [Command::Status]);
+        assert_eq!(response.status, Status::Ok);
+        assert_eq!(response.content_type, "application/json; charset=utf-8");
+        assert_eq!(body(&response), r#"{"status":"ok"}"#);
+    }
+
+    #[test]
+    fn health_with_no_answer() {
+        let (response, _) = all_commands(&request("GET /health HTTP/1.1\r\n\r\n"), |_| {
+            Reply::NoAnswer
+        });
+        assert_eq!(response.status, Status::Unavailable);
+        assert_eq!(response.content_type, "application/json; charset=utf-8");
+        assert_eq!(body(&response), r#"{"status":"no answer"}"#);
+    }
+
+    #[test]
+    fn health_is_get_only() {
+        let (response, seen) = all_commands(
+            &request("POST /health HTTP/1.1\r\nContent-Length: 0\r\n\r\n"),
+            loop_reply,
+        );
+        assert_eq!(seen, []);
+        assert_eq!(response.status, Status::MethodNotAllowed);
+        assert_eq!(response.headers, [("Allow", "GET".to_owned())]);
     }
 
     #[test]
