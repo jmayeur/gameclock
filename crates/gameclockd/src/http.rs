@@ -101,6 +101,76 @@ impl Request {
     }
 }
 
+/// A response. Each response closes the connection (docs/adr/0020).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Response {
+    /// The status.
+    pub status: Status,
+    /// The value of the `Content-Type` header.
+    pub content_type: &'static str,
+    /// More headers, after the fixed headers.
+    pub headers: Vec<(&'static str, String)>,
+    /// The body.
+    pub body: Vec<u8>,
+}
+
+impl Response {
+    /// A response with this status, type, and body.
+    #[must_use]
+    pub fn new(status: Status, content_type: &'static str, body: impl Into<Vec<u8>>) -> Self {
+        Self {
+            status,
+            content_type,
+            headers: Vec::new(),
+            body: body.into(),
+        }
+    }
+
+    /// A refusal: the status code and its reason as a text body.
+    #[must_use]
+    pub fn refusal(status: Status) -> Self {
+        Self::new(
+            status,
+            "text/plain; charset=utf-8",
+            format!("{} {}\n", status.code(), status.reason()),
+        )
+    }
+
+    /// Add a header.
+    #[must_use]
+    pub fn with_header(mut self, name: &'static str, value: impl Into<String>) -> Self {
+        self.headers.push((name, value.into()));
+        self
+    }
+
+    /// The bytes to write on the connection.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut head = format!(
+            "HTTP/1.1 {} {}\r\n\
+             Content-Type: {}\r\n\
+             Content-Length: {}\r\n\
+             Connection: close\r\n\
+             Cache-Control: no-store\r\n\
+             X-Content-Type-Options: nosniff\r\n",
+            self.status.code(),
+            self.status.reason(),
+            self.content_type,
+            self.body.len(),
+        );
+        for (name, value) in &self.headers {
+            head.push_str(name);
+            head.push_str(": ");
+            head.push_str(value);
+            head.push_str("\r\n");
+        }
+        head.push_str("\r\n");
+        let mut bytes = head.into_bytes();
+        bytes.extend_from_slice(&self.body);
+        bytes
+    }
+}
+
 /// The result of a parse of the bytes that arrived.
 #[derive(Debug)]
 pub enum Parse {
@@ -457,6 +527,74 @@ mod tests {
             let at = random.below(bytes.len());
             bytes[at] = random.next().to_le_bytes()[0];
             check(&bytes);
+        }
+    }
+
+    fn text_of(response: &Response) -> String {
+        String::from_utf8(response.to_bytes()).unwrap()
+    }
+
+    #[test]
+    fn response_bytes() {
+        let response = Response::new(Status::Ok, "text/html; charset=utf-8", "<p>hi</p>");
+        assert_eq!(
+            text_of(&response),
+            "HTTP/1.1 200 OK\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\
+             Content-Length: 9\r\n\
+             Connection: close\r\n\
+             Cache-Control: no-store\r\n\
+             X-Content-Type-Options: nosniff\r\n\
+             \r\n\
+             <p>hi</p>"
+        );
+    }
+
+    #[test]
+    fn response_with_a_header() {
+        let response =
+            Response::new(Status::MethodNotAllowed, "text/plain", "").with_header("Allow", "GET");
+        let text = text_of(&response);
+        assert!(
+            text.starts_with("HTTP/1.1 405 Method Not Allowed\r\n"),
+            "{text}"
+        );
+        assert!(text.contains("\r\nAllow: GET\r\n"), "{text}");
+        assert!(text.contains("\r\nContent-Length: 0\r\n"), "{text}");
+        assert!(text.ends_with("\r\n\r\n"), "{text}");
+    }
+
+    #[test]
+    fn length_counts_bytes_not_characters() {
+        let response = Response::new(Status::Ok, "text/plain; charset=utf-8", "é");
+        assert!(text_of(&response).contains("Content-Length: 2\r\n"));
+    }
+
+    #[test]
+    fn refusal_has_a_short_text_body() {
+        let text = text_of(&Response::refusal(Status::HeadersTooLarge));
+        assert!(
+            text.starts_with("HTTP/1.1 431 Request Header Fields Too Large\r\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Content-Type: text/plain; charset=utf-8\r\n"),
+            "{text}"
+        );
+        assert!(
+            text.ends_with("\r\n\r\n431 Request Header Fields Too Large\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn no_cors_headers() {
+        for status in [Status::Ok, Status::Forbidden, Status::NotFound] {
+            let text = text_of(&Response::refusal(status));
+            assert!(
+                !text.to_ascii_lowercase().contains("access-control-"),
+                "{text}"
+            );
         }
     }
 

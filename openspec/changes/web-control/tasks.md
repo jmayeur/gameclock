@@ -9,8 +9,8 @@
 - [x] 2.1 Red: write `http::parse` unit tests: a complete `GET`, a `POST` with a body, a `Partial` head, a `Partial` body, and LF-only line ends. Write the size refusals: a head over 8 KiB (431), with a 9000-byte header and no line end, and a body over 1 KiB (413). Write the form refusals: `Transfer-Encoding` with no `Content-Length` (411), a bad or doubled `Content-Length` (400), and `HTTP/2.0` (400). See them fail because the module does not exist.
 - [x] 2.2 Green: add `http.rs` with `parse`, `Request`, `Status`, and the header lookup with no case (design D1, D2). Verify that the 2.1 tests pass.
 - [x] 2.3 Red: write a random-bytes test with a fixed seed and a small generator in the test (no new dependency). Feed 10,000 random inputs and random cuts of good requests to `parse`. Verify that it never panics and never reports a head over 8 KiB. See it fail by a short change that removes the head limit, then restore it.
-- [ ] 2.4 Red: write `Response` tests: the status line, `Content-Length`, `Connection: close`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and no `Access-Control-` header. See them fail.
-- [ ] 2.5 Green: add `Response` and its bytes. Verify that the 2.4 tests pass.
+- [x] 2.4 Red: write `Response` tests: the status line, `Content-Length`, `Connection: close`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and no `Access-Control-` header. See them fail.
+- [x] 2.5 Green: add `Response` and its bytes. Verify that the 2.4 tests pass.
 
 ## 3. Routes, forms, and the page (`web-control`)
 
