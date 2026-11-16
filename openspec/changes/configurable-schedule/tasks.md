@@ -2,8 +2,8 @@
 
 ## 1. ADR and dependencies
 
-- [ ] 1.1 Write ADR-0019 (the config is a TOML file that serde reads in the daemon). Link ADR-0014 and ADR-0018, and add ADR-0019 to their "Related" lines as a small note. Add it to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
-- [ ] 1.2 Add `serde` (with `derive`) and `toml` (no default features: `std`, `serde`, `parse`) to the workspace and to `gameclockd`. Run `cargo deny check`. Add a license to `deny.toml` only if a new crate needs one, with a comment. Verify that `cargo build` and `cargo deny check` pass.
+- [x] 1.1 Write ADR-0019 (the config is a TOML file that serde reads in the daemon). Link ADR-0014 and ADR-0018, and add ADR-0019 to their "Related" lines as a small note. Add it to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 1.2 Add `serde` (with `derive`) and `toml` (no default features: `std`, `serde`, `parse`) to the workspace and to `gameclockd`. Run `cargo deny check`. Add a license to `deny.toml` only if a new crate needs one, with a comment. Verify that `cargo build` and `cargo deny check` pass.
 
 ## 2. Owned alerts and limits in the core (`alerts`)
 

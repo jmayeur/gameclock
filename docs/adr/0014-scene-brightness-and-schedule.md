@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-10
-- **Related:** ADR-0005, ADR-0006, ADR-0012. OpenSpec change `clock-scene`.
+- **Related:** ADR-0005, ADR-0006, ADR-0012, ADR-0019. OpenSpec change `clock-scene`.
 
 ## Context
 
