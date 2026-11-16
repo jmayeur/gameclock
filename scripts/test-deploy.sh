@@ -91,8 +91,18 @@ run 0 --rollback
 not_called "scp"
 called "systemctl disable --now gameclockd"
 # Scenario: Rollback starts the legacy web stack, after gameclockd stops.
-called "systemctl enable --now clock.svc.service nginx.service pm2-pi.service"
-before "systemctl disable --now gameclockd" "systemctl enable --now clock.svc.service nginx.service pm2-pi.service"
+# The clock and nginx start at once. PM2 needs minutes on the Pi, so it gets
+# a long start limit and starts without a wait (docs/adr/0020).
+called "systemctl enable --now clock.svc.service nginx.service"
+before "systemctl disable --now gameclockd" "systemctl enable --now clock.svc.service nginx.service"
+called "TimeoutStartSec=15min"
+called "/etc/systemd/system/pm2-pi.service.d/gameclockd-rollback.conf"
+not_called "TimeoutStopSec"
+called "systemctl enable pm2-pi.service"
+called "systemctl start --no-block pm2-pi.service"
+before "gameclockd-rollback.conf" "systemctl daemon-reload"
+before "systemctl daemon-reload" "systemctl start --no-block pm2-pi.service"
+before "systemctl disable --now gameclockd" "systemctl start --no-block pm2-pi.service"
 
 # Unknown option.
 run nonzero --frobnicate

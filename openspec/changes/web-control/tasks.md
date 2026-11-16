@@ -48,12 +48,12 @@
 
 ## 8. On-device verification and measurements
 
-- [ ] 8.1 Before the deploy, record the RSS of Node, PM2, and nginx, and `free -m`. Record the time of `GET /` and `POST /message` to the legacy page from a laptop, 5 runs each. Use a message that the legacy clock can show. Write the numbers in `openspec/changes/web-control/measurements.md`.
-- [ ] 8.2 Build with `scripts/build-pi.sh`, and run `scripts/check-pi-binary.sh`. Record the binary size against `main`.
-- [ ] 8.3 Deploy with `scripts/deploy.sh`. Run "Web page on port 80": `sudo ss -ltnp` and `GET /health` from the laptop. Record `free -m`.
-- [ ] 8.4 Run "Page from a phone": ask the user to open the page on a phone, send a message, and start the panic alert. Ask the user to verify the panel.
-- [ ] 8.5 Run "Idle clock with the listener": `scripts/measure.sh` for 60 s with the clock only. Record CPU and voluntary context switches for the main thread and the web thread, and RSS.
-- [ ] 8.6 Run "Response time on the LAN": 5 runs each of `GET /` and `POST /message`. Record the medians next to the legacy numbers.
+- [x] 8.1 Before the deploy, record the RSS of Node, PM2, and nginx, and `free -m`. Record the time of `GET /` and `POST /message` to the legacy page from a laptop, 5 runs each. Use a message that the legacy clock can show. Write the numbers in `openspec/changes/web-control/measurements.md`.
+- [x] 8.2 Build with `scripts/build-pi.sh`, and run `scripts/check-pi-binary.sh`. Record the binary size against `main`.
+- [x] 8.3 Deploy with `scripts/deploy.sh`. Run "Web page on port 80": `sudo ss -ltnp` and `GET /health` from the laptop. Record `free -m`.
+- [x] 8.4 Run "Page from a phone": ask the user to open the page on a phone, send a message, and start the panic alert. Ask the user to verify the panel.
+- [x] 8.5 Run "Idle clock with the listener": `scripts/measure.sh` for 60 s with the clock only. Record CPU and voluntary context switches for the main thread and the web thread, and RSS.
+- [x] 8.6 Run "Response time on the LAN": 5 runs each of `GET /` and `POST /message`. Record the medians next to the legacy numbers.
 - [ ] 8.7 Run "Rollback gives back the legacy page": `scripts/deploy.sh --rollback`, then a message from the legacy page. Leave the legacy clock running unless the user asks for `--enable`.
 
 ## 9. Docs and final verification

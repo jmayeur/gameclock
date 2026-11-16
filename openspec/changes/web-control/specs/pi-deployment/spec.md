@@ -50,7 +50,9 @@ boot. Exactly one of the two web stacks is then enabled.
 `scripts/deploy.sh` SHALL stop `nginx.service` and `pm2-pi.service` before it
 restarts `gameclockd`, so that the daemon can bind port 80. With `--enable`, it
 SHALL also disable them at boot. With `--rollback`, it SHALL stop
-`gameclockd`, and then enable and start the legacy clock, nginx, and PM2.
+`gameclockd`, and then enable and start the legacy clock and nginx. It SHALL
+give `pm2-pi.service` a start limit of 15 minutes, enable it, and start it
+with no wait. On the Pi, Node needs minutes to start PM2.
 
 #### Scenario: Deploy stops the legacy web stack
 - **WHEN** the deploy script runs with stub `ssh` and `scp`
@@ -64,8 +66,11 @@ SHALL also disable them at boot. With `--rollback`, it SHALL stop
 #### Scenario: Rollback starts the legacy web stack
 - **WHEN** the deploy script runs with `--rollback` and a stub `ssh`
 - **THEN** the remote command disables and stops `gameclockd` first
-- **AND** it then enables and starts `clock.svc.service`, `nginx.service`, and `pm2-pi.service`
+- **AND** it then enables and starts `clock.svc.service` and `nginx.service`
+- **AND** it writes a drop-in with `TimeoutStartSec=15min` for `pm2-pi.service`, reloads systemd, enables PM2, and starts it with `--no-block`
 
 #### Scenario: Rollback gives back the legacy page (on-device)
 - **WHEN** the deploy script runs with `--rollback`
-- **THEN** the legacy page answers on port 80 from a laptop on the LAN, and a message from it shows on the legacy clock
+- **THEN** the panel shows the legacy clock when the script ends
+- **AND** in 15 minutes or less, the legacy page answers on port 80 from a laptop on the LAN
+- **AND** a message from the legacy page shows on the legacy clock

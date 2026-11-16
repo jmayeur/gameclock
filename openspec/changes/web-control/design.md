@@ -160,7 +160,15 @@ cannot use a browser on the LAN to send commands (ADR-0020).
   - `--enable`: also `disable` for `clock.svc.service`, `nginx`, and
     `pm2-pi`
   - `--rollback`: `disable --now gameclockd`, then `enable --now
-    clock.svc.service nginx pm2-pi`
+    clock.svc.service nginx`. Then a drop-in gives `pm2-pi` a start limit
+    of 15 minutes, and the script enables it and starts it with
+    `--no-block`.
+- **Node is slow on the Pi.** With the legacy clock on the core, `node -e 0`
+  takes 55 s, and a load of the PM2 module takes 77 s. A start of PM2 runs
+  Node three times and takes about 5 minutes. The default limit of 90 s
+  stops it each time, and systemd then starts it again in a loop. The stop
+  of PM2 also reaches its 90 s limit, and systemd then ends it with SIGTERM.
+  The result is correct, so the stop keeps its default limit.
 - No `Conflicts=` on nginx. A package upgrade can restart nginx, and a
   `Conflicts=` would then stop the clock. A port conflict only stops the
   web page, and a deploy can stop nginx again.
@@ -183,6 +191,9 @@ cannot use a browser on the LAN to send commands (ADR-0020).
   `--simulator` runs use `--http=127.0.0.1:0` or a high port.
 - **Rollback needs nginx, PM2, and Node** → the deploy does not remove them.
   A later change can remove them after some weeks of use.
+- **The legacy page comes back slowly after a rollback** → the legacy clock
+  and nginx start at once. The page needs about 5 minutes, until PM2 starts
+  Node. nginx gives 502 until then.
 
 ## Migration Plan
 

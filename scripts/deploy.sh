@@ -12,7 +12,9 @@
 #   --enable    also make gameclockd the boot service instead of the legacy
 #               clock, nginx, and PM2.
 #   --rollback  stop and disable gameclockd. Start and enable the legacy
-#               clock, nginx, and PM2. Copies nothing.
+#               clock and nginx. Give PM2 a start limit of 15 minutes, then
+#               enable it and start it with no wait. On the Pi, Node needs
+#               about 5 minutes to start PM2 and the page. Copies nothing.
 #
 # GAMECLOCK_HOST is any ssh destination (user@host or an ~/.ssh/config alias).
 # The repo never names a device. The remote user needs passwordless sudo.
@@ -45,8 +47,15 @@ host=$GAMECLOCK_HOST
 if [ "$mode" = rollback ]; then
     ssh "$host" 'set -e
         sudo systemctl disable --now gameclockd
-        sudo systemctl enable --now clock.svc.service nginx.service pm2-pi.service'
-    echo "rolled back: legacy clock and web page running and enabled at boot on $host"
+        sudo systemctl enable --now clock.svc.service nginx.service
+        sudo mkdir -p /etc/systemd/system/pm2-pi.service.d
+        printf "%s\n" "[Service]" "TimeoutStartSec=15min" |
+            sudo tee /etc/systemd/system/pm2-pi.service.d/gameclockd-rollback.conf >/dev/null
+        sudo systemctl daemon-reload
+        sudo systemctl enable pm2-pi.service
+        sudo systemctl start --no-block pm2-pi.service'
+    echo "rolled back: legacy clock running and enabled at boot on $host"
+    echo "PM2 starts in the background. The legacy page can need 5 minutes or more."
     exit 0
 fi
 
