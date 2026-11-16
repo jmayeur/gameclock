@@ -273,8 +273,11 @@ mod log_panel {
             &socket_arg(&socket),
         ]);
         d.wait_for(READY);
-        std::fs::write(&path, "[schedule.default]\ncolor = \"ff0000\"\nbrightness = 120\n")
-            .expect("write the bad config");
+        std::fs::write(
+            &path,
+            "[schedule.default]\ncolor = \"ff0000\"\nbrightness = 120\n",
+        )
+        .expect("write the bad config");
         let (code, out, _) = ctl(&[&socket_arg(&socket), "reload"]);
         assert_eq!(code, Some(1));
         assert_eq!(
