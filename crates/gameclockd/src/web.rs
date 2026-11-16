@@ -111,10 +111,128 @@ fn message_command(form: &Form) -> Result<Command, CommandError> {
     Ok(Command::Message(Message::new(text, passes, color)?))
 }
 
-/// The page, with the reply of an action.
-fn page(status: Status, reply: Option<&str>, _ask: &mut dyn FnMut(Command) -> Reply) -> Response {
-    let reply = reply.unwrap_or_default();
-    Response::new(status, HTML, format!("<!doctype html><p>{reply}</p>"))
+/// The policy of the page: no scripts, only its own style, and forms that
+/// post to the daemon only.
+const POLICY: &str =
+    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'";
+
+/// The page without its dynamic parts.
+const PAGE_START: &str = include_str!("web/page-start.html");
+
+/// The page, with the status, the controls, and the reply of an action. The
+/// page asks the loop for the status and the alert names.
+fn page(status: Status, reply: Option<&str>, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
+    let state = ask(Command::Status);
+    let names = ask(Command::AlertNames);
+    let mut html = String::with_capacity(4096);
+    html.push_str(PAGE_START);
+    push_status_line(&mut html, &state);
+    if let Some(reply) = reply {
+        let class = if reply == "ok" {
+            "reply ok"
+        } else {
+            "reply error"
+        };
+        html.push_str("<p class=\"");
+        html.push_str(class);
+        html.push_str("\">");
+        push_escaped(&mut html, reply);
+        html.push_str("</p>\n");
+    }
+    html.push_str(MESSAGE_FORM);
+    html.push_str("<h2>Alerts</h2>\n<div class=\"row\">\n");
+    if let Reply::Answer(names) = &names {
+        for name in names
+            .strip_prefix("ok")
+            .unwrap_or_default()
+            .split_whitespace()
+        {
+            html.push_str("<form method=\"post\" action=\"/alert\">");
+            html.push_str("<input type=\"hidden\" name=\"name\" value=\"");
+            push_escaped(&mut html, name);
+            html.push_str("\"><button class=\"alert\">");
+            push_escaped(&mut html, name);
+            html.push_str("</button></form>\n");
+        }
+    }
+    html.push_str(PAGE_END);
+    Response::new(status, HTML, html).with_header("Content-Security-Policy", POLICY)
+}
+
+const MESSAGE_FORM: &str = "\
+<form method=\"post\" action=\"/message\">
+<label for=\"msg\">Message</label>
+<input id=\"msg\" name=\"msg\" type=\"text\" maxlength=\"64\" required autocomplete=\"off\" placeholder=\"Go team!\">
+<div class=\"row\">
+<label>Passes <select name=\"passes\">\
+<option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option>\
+<option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>\
+</select></label>
+<label>Color <input name=\"color\" type=\"color\" value=\"#009600\"></label>
+<button>Send</button>
+</div>
+</form>
+";
+
+const PAGE_END: &str = "\
+</div>
+<h2>Panel</h2>
+<div class=\"row\">
+<form method=\"post\" action=\"/clear\"><button>Clear messages</button></form>
+<form method=\"post\" action=\"/alert/stop\"><button>Stop alert</button></form>
+</div>
+</main>
+</body>
+</html>
+";
+
+/// Add the status line. The `status` reply has the form
+/// `ok mode=… zone=… brightness=… messages=… alert=…`.
+fn push_status_line(html: &mut String, state: &Reply) {
+    html.push_str("<p class=\"status\">");
+    match state {
+        Reply::Answer(line) if line.starts_with("ok ") => {
+            let value = |key: &str| {
+                line.split_whitespace()
+                    .find_map(|word| word.strip_prefix(key)?.strip_prefix('='))
+                    .unwrap_or("?")
+            };
+            for (n, (label, key, unit)) in [
+                ("Mode", "mode", ""),
+                ("Brightness", "brightness", "%"),
+                ("Messages", "messages", ""),
+                ("Alert", "alert", ""),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if n > 0 {
+                    html.push_str(" · ");
+                }
+                html.push_str(label);
+                html.push_str(": ");
+                push_escaped(html, value(key));
+                html.push_str(unit);
+            }
+        }
+        Reply::Answer(line) => push_escaped(html, line),
+        Reply::NoAnswer => push_escaped(html, NO_ANSWER),
+    }
+    html.push_str("</p>\n");
+}
+
+/// Add `text` with the HTML characters escaped.
+fn push_escaped(html: &mut String, text: &str) {
+    for c in text.chars() {
+        match c {
+            '&' => html.push_str("&amp;"),
+            '<' => html.push_str("&lt;"),
+            '>' => html.push_str("&gt;"),
+            '"' => html.push_str("&quot;"),
+            '\'' => html.push_str("&#39;"),
+            c => html.push(c),
+        }
+    }
 }
 
 /// A form value that the decoder cannot read.
@@ -262,6 +380,94 @@ mod tests {
 
     fn message(text: &str, passes: u8, color: Rgb888) -> Command {
         Command::Message(Message::new(text, passes, color).unwrap())
+    }
+
+    fn get_page() -> (Response, String) {
+        let (response, actions) = send(&request("GET / HTTP/1.1\r\nHost: clock.local\r\n\r\n"));
+        assert_eq!(actions, []);
+        let text = body(&response);
+        (response, text)
+    }
+
+    #[test]
+    fn page_with_the_built_in_alerts() {
+        let (response, page) = get_page();
+        assert_eq!(response.status, Status::Ok);
+        assert_eq!(response.content_type, "text/html; charset=utf-8");
+        assert!(
+            page.contains(r#"<form method="post" action="/message">"#),
+            "{page}"
+        );
+        for field in [r#"name="msg""#, r#"name="passes""#, r#"name="color""#] {
+            assert!(page.contains(field), "{field}");
+        }
+        assert_eq!(page.matches(r#"action="/alert">"#).count(), 3, "{page}");
+        for name in NAMES {
+            let hidden = format!(r#"<input type="hidden" name="name" value="{name}">"#);
+            assert!(page.contains(&hidden), "{hidden}");
+        }
+        assert!(page.contains(r#"action="/clear">"#));
+        assert!(page.contains(r#"action="/alert/stop">"#));
+        assert!(
+            !page.contains("<script"),
+            "the page works with no JavaScript"
+        );
+    }
+
+    #[test]
+    fn page_shows_the_status() {
+        let (_, page) = get_page();
+        let line = page
+            .lines()
+            .find(|line| line.contains(r#"class="status""#))
+            .unwrap();
+        for word in ["clock", "60", "2", "none"] {
+            assert!(line.contains(word), "{word} in {line}");
+        }
+    }
+
+    #[test]
+    fn page_with_no_status() {
+        let (response, actions) =
+            send_with(&request("GET / HTTP/1.1\r\n\r\n"), |_| Reply::NoAnswer);
+        assert_eq!(response.status, Status::Ok);
+        assert_eq!(actions, []);
+        assert!(body(&response).contains("the daemon did not answer in 2 s."));
+    }
+
+    #[test]
+    fn page_after_a_reload() {
+        let (response, _) = send_with(&request("GET / HTTP/1.1\r\n\r\n"), |command| {
+            Reply::Answer(match command {
+                Command::AlertNames => "ok dinner".to_owned(),
+                _ => STATUS.to_owned(),
+            })
+        });
+        let page = body(&response);
+        assert_eq!(page.matches(r#"action="/alert">"#).count(), 1, "{page}");
+        assert!(page.contains(r#"<input type="hidden" name="name" value="dinner">"#));
+    }
+
+    #[test]
+    fn text_from_data_is_escaped() {
+        let (response, actions) = send(&post("/alert", "name=%3Cb%3E%26%22%27"));
+        assert_eq!(actions, [Command::Alert(Some("<b>&\"'".into()))]);
+        let page = body(&response);
+        assert!(page.contains("&lt;b&gt;&amp;&quot;&#39;"), "{page}");
+        assert!(!page.contains("<b>&\"'"), "{page}");
+    }
+
+    #[test]
+    fn page_security_headers() {
+        let (response, _) = get_page();
+        assert_eq!(
+            response.headers,
+            [(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"
+                    .to_owned()
+            )]
+        );
     }
 
     #[test]
