@@ -20,6 +20,7 @@ pub mod message;
 pub mod panel;
 pub mod scene;
 pub mod schedule;
+pub mod tables;
 pub mod test_pattern;
 
 /// Re-exported, so that other crates draw with the same version.

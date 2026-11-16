@@ -478,7 +478,59 @@ pub struct Trigger {
     pub alert: Rc<Alert>,
 }
 
+/// A trigger value that is not valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerError {
+    /// The start time is at or after the end time.
+    Window,
+    /// The period is not from 1 s to 1 h.
+    Every,
+}
+
+impl fmt::Display for TriggerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Window => f.write_str("the start time must be before the end time."),
+            Self::Every => write!(
+                f,
+                "the trigger period must be from 1 to {MAX_SECONDS} seconds."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TriggerError {}
+
 impl Trigger {
+    /// A rule that starts `alert` each `every` from `from` to before `to` on
+    /// `days`.
+    ///
+    /// # Errors
+    /// [`TriggerError`] if `from` is not before `to`, or if `every` is not
+    /// from 1 s to 1 h.
+    pub fn new(
+        days: Weekdays,
+        from: TimeOfDay,
+        to: TimeOfDay,
+        every: SignedDuration,
+        alert: Rc<Alert>,
+    ) -> Result<Self, TriggerError> {
+        if from >= to {
+            return Err(TriggerError::Window);
+        }
+        let period = SignedDuration::from_secs(1)..=SignedDuration::from_secs(MAX_SECONDS);
+        if !period.contains(&every) {
+            return Err(TriggerError::Every);
+        }
+        Ok(Self {
+            days,
+            from,
+            to,
+            every,
+            alert,
+        })
+    }
+
     /// The legacy bedtime warning: on bedtime nights (Sunday to Thursday),
     /// `bed-flash` each 10 s from 23:00 to 23:05, and `bedtime` each 10 s
     /// from 23:05 to 23:16. A rule whose alert is not in `alerts` is not in
@@ -500,13 +552,9 @@ impl Trigger {
         table
             .into_iter()
             .filter_map(|(name, (fh, fm), (th, tm))| {
-                Some(Self {
-                    days: bedtime_nights,
-                    from: TimeOfDay::hm(fh, fm).ok()?,
-                    to: TimeOfDay::hm(th, tm).ok()?,
-                    every,
-                    alert: alerts.find(name)?,
-                })
+                let from = TimeOfDay::hm(fh, fm).ok()?;
+                let to = TimeOfDay::hm(th, tm).ok()?;
+                Self::new(bedtime_nights, from, to, every, alerts.find(name)?).ok()
             })
             .collect()
     }
@@ -1060,5 +1108,51 @@ mod tests {
         assert_eq!(two.names().to_string(), "a and b");
         let one = Alerts::new(vec![good("dinner")]).unwrap();
         assert_eq!(one.names().to_string(), "dinner");
+    }
+
+    // Trigger limits (`openspec/specs/daemon-config`).
+
+    fn hm(h: u8, m: u8) -> TimeOfDay {
+        TimeOfDay::hm(h, m).unwrap()
+    }
+
+    fn panic_rc() -> Rc<Alert> {
+        Alerts::legacy().find("panic").unwrap()
+    }
+
+    #[test]
+    fn a_good_trigger() {
+        let every = SignedDuration::from_secs(30);
+        let t = Trigger::new(Weekdays::EACH_DAY, hm(7, 0), hm(7, 1), every, panic_rc()).unwrap();
+        assert_eq!(t.from, hm(7, 0));
+        let hour = SignedDuration::from_secs(3600);
+        assert!(Trigger::new(Weekdays::EACH_DAY, hm(0, 0), hm(24, 0), hour, panic_rc()).is_ok());
+    }
+
+    #[test]
+    fn trigger_window_must_be_in_order() {
+        let every = SignedDuration::from_secs(10);
+        for (from, to) in [(hm(7, 0), hm(7, 0)), (hm(8, 0), hm(7, 0))] {
+            let err = Trigger::new(Weekdays::EACH_DAY, from, to, every, panic_rc()).unwrap_err();
+            assert_eq!(err, TriggerError::Window);
+        }
+        assert_eq!(
+            TriggerError::Window.to_string(),
+            "the start time must be before the end time."
+        );
+    }
+
+    #[test]
+    fn trigger_period_limits() {
+        for secs in [0, 3601] {
+            let every = SignedDuration::from_secs(secs);
+            let err = Trigger::new(Weekdays::EACH_DAY, hm(7, 0), hm(8, 0), every, panic_rc())
+                .unwrap_err();
+            assert_eq!(err, TriggerError::Every, "{secs}");
+        }
+        assert_eq!(
+            TriggerError::Every.to_string(),
+            "the trigger period must be from 1 to 3600 seconds."
+        );
     }
 }
