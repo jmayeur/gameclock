@@ -52,7 +52,7 @@
 
 ## 8. Simulator verification
 
-- [ ] 8.1 Run the `simulator` build with a temporary config that has a green default style and the alert `dinner`. Send `alert dinner`. Then change the file to a blue style and send `reload`. Verify the colors in the captured output, and the error reply for a file with an error.
+- [x] 8.1 Run the `simulator` build with a temporary config that has a green default style and the alert `dinner`. Send `alert dinner`. Then change the file to a blue style and send `reload`. Verify the colors in the captured output, and the error reply for a file with an error. Result: green clock `(0,255,0)`, yellow `DINNER` `(255,255,0)`, blue clock `(0,0,255)` after `reload`, `alert panic` refused with "The alerts are dinner.", and the error reply at line 3, column 14.
 
 ## 9. On-device verification and measurements
 
