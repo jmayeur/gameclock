@@ -28,8 +28,8 @@
 
 ## 4. Arguments and start (`daemon-config`, `daemon-lifecycle`)
 
-- [ ] 4.1 Red: write `parse_args` tests for "Default config path", "Config path from the argument", and "Empty config path is a usage error". See them fail.
-- [ ] 4.2 Green: add `--config=<path>` and the default path to `Args`. Verify that the 4.1 tests pass.
+- [x] 4.1 Red: write `parse_args` tests for "Default config path", "Config path from the argument", and "Empty config path is a usage error". See them fail.
+- [x] 4.2 Green: add `--config=<path>` and the default path to `Args`. Verify that the 4.1 tests pass.
 - [ ] 4.3 Red: write `tests/cli.rs` tests. Write "Bad file at start": exit status 2, the error on standard error, and no `LogPanel` present line. Also write "Missing file at a given path", and a start with a correct file. See them fail.
 - [ ] 4.4 Green: load the config in `main` before the signal thread, the socket, and the panel (D6). Write the note for a missing default file. Verify that the 4.3 tests and all CLI tests pass in the default and the `simulator` builds.
 

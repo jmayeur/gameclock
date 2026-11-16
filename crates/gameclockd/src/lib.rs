@@ -14,6 +14,7 @@ pub mod config;
 pub mod control;
 
 use command::{Command, CommandError, OK, status_reply};
+use config::Origin;
 
 use gameclock_core::alert::{Alerts, Trigger, Triggers};
 use gameclock_core::board::Board;
@@ -285,11 +286,13 @@ fn present<P: Panel>(
 /// A command line that the binary does not accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageError {
-    /// An argument that is not a `--led-*` driver flag, `--test-pattern`, or
-    /// `--control-socket=<path>`.
+    /// An argument that is not a `--led-*` driver flag, `--test-pattern`,
+    /// `--control-socket=<path>`, or `--config=<path>`.
     Unknown(String),
     /// `--control-socket=` with no path.
     EmptySocketPath,
+    /// `--config=` with no path.
+    EmptyConfigPath,
     /// `ctl` with no command.
     Ctl,
 }
@@ -299,11 +302,15 @@ impl fmt::Display for UsageError {
         match self {
             Self::Unknown(arg) => write!(
                 f,
-                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
+                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, and --config=<path>."
             ),
             Self::EmptySocketPath => write!(
                 f,
                 "--control-socket needs a path, for example --control-socket={DEFAULT_SOCKET}."
+            ),
+            Self::EmptyConfigPath => write!(
+                f,
+                "--config needs a path, for example --config={DEFAULT_CONFIG}."
             ),
             Self::Ctl => {
                 f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command> [<word>...]")
@@ -364,6 +371,10 @@ pub struct Args {
     pub driver: Vec<String>,
     /// The path of the control socket.
     pub socket: PathBuf,
+    /// The path of the config file (docs/adr/0019).
+    pub config: PathBuf,
+    /// Where the config path came from.
+    pub config_origin: Origin,
 }
 
 /// The checked command line of `gameclockd ctl`.
@@ -390,6 +401,12 @@ pub const DEFAULT_SOCKET: &str = "/run/gameclockd/control.sock";
 /// The argument that changes the path of the control socket.
 const CONTROL_SOCKET: &str = "--control-socket=";
 
+/// The default path of the config file (docs/adr/0019).
+pub const DEFAULT_CONFIG: &str = "/etc/gameclockd/config.toml";
+
+/// The argument that changes the path of the config file.
+const CONFIG: &str = "--config=";
+
 /// The path of a `--control-socket=<path>` argument, or `None` for another
 /// argument.
 fn socket_path(arg: &str) -> Option<Result<PathBuf, UsageError>> {
@@ -403,7 +420,8 @@ fn socket_path(arg: &str) -> Option<Result<PathBuf, UsageError>> {
 
 /// Check the command line. If the first argument is `ctl`, the rest is the
 /// client's command line. Otherwise only `--led-*` driver flags,
-/// `--test-pattern`, and `--control-socket=<path>` are accepted. The
+/// `--test-pattern`, `--control-socket=<path>`, and `--config=<path>` are
+/// accepted. The
 /// function gives the driver flags unchanged and in their order, for the
 /// driver to parse (`openspec/specs/daemon-lifecycle`, docs/adr/0009).
 ///
@@ -422,12 +440,20 @@ where
         mode: Mode::Clock,
         driver: Vec::new(),
         socket: PathBuf::from(DEFAULT_SOCKET),
+        config: PathBuf::from(DEFAULT_CONFIG),
+        config_origin: Origin::Default,
     };
     for arg in args {
         if arg == TEST_PATTERN {
             parsed.mode = Mode::TestPattern;
         } else if let Some(path) = socket_path(&arg) {
             parsed.socket = path?;
+        } else if let Some(path) = arg.strip_prefix(CONFIG) {
+            if path.is_empty() {
+                return Err(UsageError::EmptyConfigPath);
+            }
+            parsed.config = PathBuf::from(path);
+            parsed.config_origin = Origin::Argument;
         } else if arg.starts_with("--led-") {
             parsed.driver.push(arg);
         } else {
@@ -728,6 +754,8 @@ mod tests {
             mode: Mode::Clock,
             driver: given.clone(),
             socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -738,6 +766,8 @@ mod tests {
             mode: Mode::Clock,
             driver: Vec::new(),
             socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(Vec::new()), Ok(Invocation::Daemon(expected)));
     }
@@ -753,6 +783,8 @@ mod tests {
             mode: Mode::TestPattern,
             driver: args(&["--led-pwm-bits=8", "--led-slowdown-gpio=1"]),
             socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -764,8 +796,40 @@ mod tests {
             mode: Mode::Clock,
             driver: args(&["--led-pwm-bits=8"]),
             socket: PathBuf::from("/tmp/a.sock"),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn default_config_path() {
+        assert_eq!(DEFAULT_CONFIG, "/etc/gameclockd/config.toml");
+        let Ok(Invocation::Daemon(parsed)) = parse_args(args(&[])) else {
+            panic!("a daemon invocation");
+        };
+        assert_eq!(parsed.config, PathBuf::from(DEFAULT_CONFIG));
+        assert_eq!(parsed.config_origin, Origin::Default);
+    }
+
+    #[test]
+    fn config_path_from_the_argument() {
+        let given = args(&["--config=/tmp/gc.toml", "--led-pwm-bits=8"]);
+        let expected = Args {
+            mode: Mode::Clock,
+            driver: args(&["--led-pwm-bits=8"]),
+            socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from("/tmp/gc.toml"),
+            config_origin: Origin::Argument,
+        };
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn empty_config_path_is_a_usage_error() {
+        let err = parse_args(args(&["--config="])).unwrap_err();
+        assert_eq!(err, UsageError::EmptyConfigPath);
+        assert!(err.to_string().contains("--config"), "{err}");
     }
 
     #[test]
@@ -1434,7 +1498,7 @@ mod tests {
         );
         assert_eq!(
             UsageError::Unknown("--frobnicate".into()).to_string(),
-            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, and --config=<path>."
         );
     }
 
