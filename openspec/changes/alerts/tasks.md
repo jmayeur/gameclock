@@ -62,8 +62,8 @@
 ## 10. Docs and final verification
 
 - [x] 10.1 Update `glossary.md` (alert, alert definition, priority, clear rule, timed trigger, color wheel, board), `roadmap.md` (mark `alerts` done, and name the config-file follow-up under `configurable-schedule`), the README, and `CHANGELOG.md`. Verify with `scripts/lint-docs.sh`.
-- [ ] 10.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
-- [ ] 10.3 Push the branch, open the PR, and verify that all CI jobs pass.
+- [x] 10.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass.
+- [x] 10.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
 ## Workflow follow-up
 
