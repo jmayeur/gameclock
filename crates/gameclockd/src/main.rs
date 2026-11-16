@@ -15,11 +15,11 @@ use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 
-use gameclockd::control;
 use gameclockd::{
     ChannelWait, Event, Invocation, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args,
     run,
 };
+use gameclockd::{config, control};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -35,6 +35,21 @@ fn main() -> ExitCode {
                 &mut std::io::stderr(),
             );
             return ExitCode::from(status);
+        }
+        Err(e) => {
+            eprintln!("gameclockd: {e}");
+            return ExitCode::from(USAGE);
+        }
+    };
+
+    // A bad config stops the start before the socket and the panel exist
+    // (docs/adr/0019).
+    let tables = match config::load(&args.config, args.config_origin) {
+        Ok(loaded) => {
+            if let Some(note) = loaded.note {
+                eprintln!("gameclockd: {note}");
+            }
+            loaded.tables
         }
         Err(e) => {
             eprintln!("gameclockd: {e}");
@@ -83,8 +98,9 @@ fn main() -> ExitCode {
         // next scene change (docs/adr/0016).
         run(
             &mut panel,
-            args.mode.base_scene(),
+            args.mode.base_scene(&tables.schedule),
             args.mode,
+            tables,
             &clock,
             &mut wait,
         )

@@ -16,11 +16,12 @@ pub mod control;
 use command::{Command, CommandError, OK, status_reply};
 use config::Origin;
 
-use gameclock_core::alert::{Alerts, Trigger, Triggers};
+use gameclock_core::alert::Triggers;
 use gameclock_core::board::Board;
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
 use gameclock_core::schedule::Schedule;
+use gameclock_core::tables::Tables;
 use gameclock_core::{Brightness, Compositor, Frame, Panel, Scene};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
@@ -186,14 +187,19 @@ pub fn run<P: Panel>(
     panel: &mut P,
     base: Box<dyn Scene>,
     mut mode: Mode,
+    tables: Tables,
     clock: &impl Clock,
     wait: &mut impl Wait,
 ) -> Result<(), RunError<P::Error>> {
     let (width, height) = panel.dimensions();
     let mut compositor = Compositor::new(base, width, height);
-    let mut board = Board::new(width, Schedule::legacy());
-    let alerts = Alerts::legacy();
-    let mut triggers = Triggers::new(Trigger::legacy(&alerts), &clock.now());
+    let Tables {
+        schedule,
+        alerts,
+        triggers,
+    } = tables;
+    let mut board = Board::new(width, schedule.clone());
+    let mut triggers = Triggers::new(triggers, &clock.now());
     loop {
         let now = clock.now();
         board.advance(&now, &mut compositor);
@@ -216,7 +222,7 @@ pub fn run<P: Panel>(
                     Command::Mode(next) => {
                         if next != mode {
                             mode = next;
-                            compositor.set_base(next.base_scene());
+                            compositor.set_base(next.base_scene(&schedule));
                             board.advance(&now, &mut compositor);
                             present(panel, &mut compositor, &now)?;
                         }
@@ -336,9 +342,9 @@ pub enum Mode {
 impl Mode {
     /// Make the base scene of this mode.
     #[must_use]
-    pub fn base_scene(self) -> Box<dyn Scene> {
+    pub fn base_scene(self, schedule: &Schedule) -> Box<dyn Scene> {
         match self {
-            Self::Clock => Box::new(ClockScene::new(Schedule::legacy())),
+            Self::Clock => Box::new(ClockScene::new(schedule.clone())),
             Self::TestPattern => Box::new(Heartbeat),
         }
     }
@@ -676,6 +682,7 @@ mod tests {
             panel,
             Box::new(Heartbeat),
             Mode::TestPattern,
+            Tables::legacy(),
             &clock,
             &mut wait,
         );
@@ -919,13 +926,17 @@ mod tests {
     fn modes_make_their_base_scene() {
         let now = ts("2026-11-10T09:05:00Z").to_zoned(TimeZone::UTC);
         let mut clock = Frame::new(64, 32);
-        Mode::Clock.base_scene().render(&now, &mut clock);
+        Mode::Clock
+            .base_scene(&Schedule::legacy())
+            .render(&now, &mut clock);
         let mut expected = Frame::new(64, 32);
         legacy_clock().render(&now, &mut expected);
         assert_eq!(clock, expected);
 
         let mut pattern = Frame::new(64, 32);
-        Mode::TestPattern.base_scene().render(&now, &mut pattern);
+        Mode::TestPattern
+            .base_scene(&Schedule::legacy())
+            .render(&now, &mut pattern);
         let mut expected = Frame::new(64, 32);
         Heartbeat.render(&now, &mut expected);
         assert_eq!(pattern, expected);
@@ -947,7 +958,15 @@ mod tests {
     fn one_present_at_startup() {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, []);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.presents.len(), 1);
         let (frame, brightness) = &panel.presents[0];
         assert_eq!(*frame, clock_frame(64, 32, START));
@@ -970,6 +989,7 @@ mod tests {
             &mut panel,
             Box::new(Dim { after: 25 }),
             Mode::Clock,
+            Tables::legacy(),
             &clock,
             &mut wait,
         )
@@ -986,6 +1006,7 @@ mod tests {
             &mut panel,
             Box::new(Dim { after: 60 }),
             Mode::Clock,
+            Tables::legacy(),
             &clock,
             &mut wait,
         )
@@ -1014,7 +1035,15 @@ mod tests {
     fn static_scene_waits_until_the_next_trigger() {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, []);
-        run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            Box::new(Red),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         // START is a Thursday, a bedtime night (`openspec/specs/alerts`).
         assert_eq!(wait.deadlines, vec![Some(ts("1970-01-01T23:00:00Z"))]);
         assert_eq!(panel.presents.len(), 1);
@@ -1033,7 +1062,7 @@ mod tests {
         let mut panel = Recorder::new(64, 32);
         let (tx, rx) = mpsc::channel();
         let (clock, mut wait) = script(START, [Step::CommandAt(at, command, tx)]);
-        run(&mut panel, base, mode, &clock, &mut wait).unwrap();
+        run(&mut panel, base, mode, Tables::legacy(), &clock, &mut wait).unwrap();
         let reply = rx.try_recv().expect("a reply");
         (panel, wait, reply)
     }
@@ -1153,7 +1182,15 @@ mod tests {
     fn run_clock(steps: Vec<Step>) -> (Recorder, ScriptedWait) {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, steps);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         (panel, wait)
     }
 
@@ -1167,7 +1204,15 @@ mod tests {
             reply_before_present: Vec::new(),
         };
         let (clock, mut wait) = script(START, [Step::CommandAt(T1, message("hello", 4), tx)]);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
         assert_eq!(panel.inner.presents[1].0, scroll_frame("hello", T1, T1));
@@ -1260,7 +1305,15 @@ mod tests {
             Step::EarlyAt(after_t1(20_000)),
         ];
         let (clock, mut wait) = script(START, steps);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
         let presents = &panel.inner.presents;
         assert_eq!(presents.len(), 4, "the clock, one, one, the clock");
@@ -1313,7 +1366,15 @@ mod tests {
     fn run_clock_from(start: &str, steps: Vec<Step>) -> (Recorder, ScriptedWait) {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(start, steps);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         (panel, wait)
     }
 
@@ -1327,7 +1388,15 @@ mod tests {
             reply_before_present: Vec::new(),
         };
         let (clock, mut wait) = script(START, [Step::CommandAt(T1, alert("panic"), tx)]);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
         assert_eq!(panel.inner.presents[1].0, alert_frame("panic", T1, T1));
@@ -1417,6 +1486,7 @@ mod tests {
             &mut panel,
             Box::new(Heartbeat),
             Mode::TestPattern,
+            Tables::legacy(),
             &clock,
             &mut wait,
         )
@@ -1460,7 +1530,15 @@ mod tests {
             tx,
         );
         let (clock, mut wait) = script(START, [step]);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
     }
@@ -1596,7 +1674,15 @@ mod tests {
                 tx.send(Event::Shutdown).unwrap();
             });
             let start = Instant::now();
-            run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
+            run(
+                &mut panel,
+                Box::new(Red),
+                Mode::Clock,
+                Tables::legacy(),
+                &clock,
+                &mut wait,
+            )
+            .unwrap();
             assert!(
                 start.elapsed() >= Duration::from_millis(500),
                 "run must wait"
