@@ -32,8 +32,8 @@
 
 ## 5. Arguments, the listener, and start (`daemon-lifecycle`, `web-control`)
 
-- [ ] 5.1 Red: write `parse_args` tests for "Default web address" and "Web address is not a driver flag". Also write "Web listener off" and "Bad web address is a usage error". See them fail.
-- [ ] 5.2 Green: add `--http=<address>` and `--http=off` to `Args` (D7). Verify that the 5.1 tests pass.
+- [x] 5.1 Red: write `parse_args` tests for "Default web address" and "Web address is not a driver flag". Also write "Web listener off" and "Bad web address is a usage error". See them fail.
+- [x] 5.2 Green: add `--http=<address>` and `--http=off` to `Args` (D7). Verify that the 5.1 tests pass.
 - [ ] 5.3 Red: write `tests/cli.rs` tests with a real `TcpStream`. Write "Listen on a given address", "Off", "One response, then close", and "Address in use". Write "Slow client" (408 in less than 3 s), "Headers that do not end", "Body too large", and "Post with no length". Write "A slow client does not stop the clock": a held connection, and a `status` on the socket that gets its reply during the hold. Write a test that sends `POST /message` and then reads `status` on the socket with `messages=1`. Change the CLI tests that start the daemon to pass `--http=127.0.0.1:0` or `--http=off`. See them fail.
 - [ ] 5.4 Green: add the listener thread with the total read limit and the write timeout (D2). Bind it in `main.rs` after the socket and before the panel, write the address line or the warning (D7). Verify that the 5.3 tests and all CLI tests pass in the default and the `simulator` builds.
 
