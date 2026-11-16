@@ -1,9 +1,9 @@
 ## MODIFIED Requirements
 
 ### Requirement: The legacy schedule is the default
-If the config has no `[schedule]` section, the daemon's clock SHALL use the
-legacy schedule. It SHALL give these styles for the local time. Mellow is the color (255,140,0). Bedtime nights are
-Sunday to Thursday.
+With no `[schedule]` section in the config, the clock SHALL give the styles of
+the legacy schedule for the local time. Mellow is (255,140,0). Bedtime nights
+are Sunday to Thursday.
 
 | Local time | Color | Brightness |
 |---|---|---|
