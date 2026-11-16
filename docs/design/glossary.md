@@ -60,7 +60,7 @@
 - **Control socket**: the Unix stream socket of `gameclockd`, by default
   `/run/gameclockd/control.sock`, for root only (ADR-0016).
 - **Command**: one line on the control socket: `clock`, `test-pattern`,
-  `status`, `message`, or `clear`. One connection carries one command.
+  `status`, `message`, `clear`, or `alert`. One connection carries one command.
 - **Reply**: the one line that the daemon sends back. It starts with `ok` or
   with `error: `.
 - **`ctl`**: the client in the same binary. `sudo gameclockd ctl status`
@@ -72,8 +72,27 @@
   past the left edge.
 - **Scroll step**: the 40 ms in which a message moves 1 pixel to the left.
   The position comes from the time, not from a count of renders.
-- **Message queue**: the messages that wait while a message shows. At most 8
-  wait, first in, first out. `clear` empties it.
+- **Message queue**: the messages that wait while a message or an alert
+  shows. At most 8 wait, first in, first out. An interrupted message can make
+  it 9. `clear` empties it.
+- **Alert**: an item that shows on top of the base scene and can interrupt a
+  message, for example `panic` or `bedtime` (ADR-0018).
+- **Alert definition**: the data of one alert: a name, a background, a text
+  and its style, a duration, a priority, and a clear rule. One alert scene
+  renders each definition.
+- **Priority**: the rank of an item on the panel. An alert starts only if its
+  priority is higher than the priority of the item on the panel. From low to
+  high: the base scene, `bed-flash`, a message, `bedtime`, and `panic`.
+- **Clear rule**: what `clear` does to an alert. A removable alert goes, and
+  a kept alert stays. `alert stop` removes each alert.
+- **Timed trigger**: a rule that starts an alert at fixed times, for example
+  `bedtime` each 10 s from 23:05 to 23:16 on bedtime nights.
+- **Color wheel**: the `panic` background. All pixels have one color, which
+  moves through red, green, and blue. The text is black or white for
+  contrast.
+- **Board**: the core part that holds the message queue and knows the item on
+  the panel. It applies the priorities, the restart of an interrupted
+  message, and the clear rules.
 - **Event channel**: the channel that the loop waits on. The signal thread
   and the control thread send events to it (ADR-0016).
 - **Semaphore file**: the legacy command channel (`msg.txt` holding

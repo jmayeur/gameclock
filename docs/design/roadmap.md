@@ -35,15 +35,18 @@ and scope can change. Update this file when a change merges or a plan changes.
    and a color, a queue of 8 messages, and the `message` and `clear`
    commands. The position comes from the time. A message uses the brightness
    of the clock schedule (ADR-0017).
-7. **`alerts`**: Panic and Bedtime as **configured instances** of one alert
-   capability, not special-case code. An alert has a background effect, text,
-   style, duration, priority, and interrupt rules. It uses shared message and
-   effect parts.
+7. **`alerts`**: **done**. Panic, bedtime, and the bedtime flash are data of
+   one alert type, rendered by one alert scene. An alert has a background
+   effect, a text and its style, a duration, a priority, and a clear rule. A
+   board applies the priorities. An interrupted message restarts. Timed
+   triggers start the bedtime warning (ADR-0018).
 
 ## Later candidates
 
 - **`configurable-schedule`**: brightness, color, and bedtime rules from
-  config, by weekday. This replaces the abandoned legacy admin page.
+  config, by weekday. This replaces the abandoned legacy admin page. The
+  alert definitions and the trigger rules also move to the config file. They
+  are built-in tables now (ADR-0018).
 - **`web-control`**: HTTP in the daemon replaces the Node 10 server. This
   saves RAM and removes Node from the Pi.
 - Priorities, layers, and overlays, for example a clock with a message ticker.

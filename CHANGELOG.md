@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Alerts (OpenSpec `alerts`, ADR-0018):
+  - `gameclock-core`: the `effect` module (color wheel, contrast color). The
+    `alert` module (the alert definition, the `BUILT_IN` table, the
+    `AlertScene`, and the timed triggers). The `board` module (queue,
+    priorities, restart of an interrupted message, and clear rules).
+    `ScrollPath` is the shared scroll math. `Queue::put_back`.
+  - The built-in alerts `panic`, `bedtime`, and `bed-flash`. On bedtime
+    nights, the daemon starts `bed-flash` each 10 s from 23:00 to 23:05, and
+    `bedtime` each 10 s from 23:05 to 23:16.
+  - `gameclockd`: the commands `alert <name>` and `alert stop`. `status`
+    gives `alert=<name>` or `alert=none`.
 - Message board (OpenSpec `message-board`, ADR-0017):
   - `gameclock-core`: the `message` module with `Message`, the `Scroll`
     scene, and the `Queue`. A message scrolls 1 pixel each 40 ms, from the
@@ -58,6 +69,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Changed
 
+- The `status` reply ends with `alert=<name>`. The unknown-command reply
+  names six commands. `clear` keeps an alert whose clear rule protects it.
+  The daemon also wakes at the next trigger time, so a static scene no
+  longer waits with no timeout (OpenSpec `alerts`).
 - The `status` reply ends with `messages=<n>`. The unknown-command reply
   names five commands. `gameclockd ctl` with more than one word is no
   longer a usage error (OpenSpec `message-board`).

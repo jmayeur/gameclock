@@ -7,8 +7,9 @@ for one ARMv6 core.
 > **Status:** the daemon drives the real panel. It shows the clock, with the
 > legacy colors and brightness for each time of day. `sudo gameclockd ctl
 > status` talks to the running daemon. `sudo gameclockd ctl message hello`
-> scrolls a message. Alerts come next, one at a time, through
-> [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
+> scrolls a message. `sudo gameclockd ctl alert panic` shows an alert, and
+> the bedtime warning starts on its own on bedtime nights. More features come
+> one at a time, through [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
 
 ## Why
