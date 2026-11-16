@@ -60,7 +60,7 @@
 - **Control socket**: the Unix stream socket of `gameclockd`, by default
   `/run/gameclockd/control.sock`, for root only (ADR-0016).
 - **Command**: one line on the control socket: `clock`, `test-pattern`,
-  `status`, `message`, `clear`, or `alert`. One connection carries one command.
+  `status`, `message`, `clear`, `alert`, or `reload`. One connection carries one command.
 - **Reply**: the one line that the daemon sends back. It starts with `ok` or
   with `error: `.
 - **`ctl`**: the client in the same binary. `sudo gameclockd ctl status`
@@ -93,6 +93,17 @@
 - **Board**: the core part that holds the message queue and knows the item on
   the panel. It applies the priorities, the restart of an interrupted
   message, and the clear rules.
+- **Config file**: the TOML file with the schedule, the alerts, and the
+  triggers. The default path is `/etc/gameclockd/config.toml` (ADR-0019,
+  `docs/config.md`).
+- **Section**: one of the three parts of the config file: `[schedule]`,
+  `[[alert]]`, and `[[trigger]]`. A section in the file replaces its
+  built-in table.
+- **Built-in table**: the legacy schedule, alerts, or triggers in the code.
+  It applies when the config file has no section for it.
+- **Reload**: the `reload` command. It reads the config file again. A
+  file with no errors applies at once, and a file with an error changes
+  nothing.
 - **Event channel**: the channel that the loop waits on. The signal thread
   and the control thread send events to it (ADR-0016).
 - **Semaphore file**: the legacy command channel (`msg.txt` holding

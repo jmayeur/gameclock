@@ -8,7 +8,8 @@ for one ARMv6 core.
 > legacy colors and brightness for each time of day. `sudo gameclockd ctl
 > status` talks to the running daemon. `sudo gameclockd ctl message hello`
 > scrolls a message. `sudo gameclockd ctl alert panic` shows an alert, and
-> the bedtime warning starts on its own on bedtime nights. More features come
+> the bedtime warning starts on its own on bedtime nights. A config file sets
+> the schedule, the alerts, and the triggers. More features come
 > one at a time, through [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
 

@@ -7,6 +7,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Config file (OpenSpec `configurable-schedule`, ADR-0019):
+  - `gameclockd`: the `config` module reads `/etc/gameclockd/config.toml`,
+    or the path of `--config=<path>`, with `serde` and `toml`. The sections
+    `[schedule]`, `[[alert]]`, and `[[trigger]]` are optional. A missing
+    section uses its built-in table. Errors give the path, the line, and
+    the column.
+  - The `reload` command reads the file again. An error keeps the tables.
+  - A file with an error at start exits with status 2.
+  - `gameclock-core`: `Tables`, `Alerts` (owned alerts with checks),
+    `Alert::validate`, `Trigger::new`, and `Board::set_schedule`.
+  - `deploy/config.toml` with the legacy tables, and `docs/config.md`.
+
 - Alerts (OpenSpec `alerts`, ADR-0018):
   - `gameclock-core`: the `effect` module (color wheel, contrast color). The
     `alert` module (the alert definition, the `BUILT_IN` table, the
@@ -68,6 +80,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 - CLAUDE.md Rule 4: test-first, red → green → refactor.
 
 ### Changed
+
+- Alerts are owned data in an `Alerts` table, shared with `Rc`. `BUILT_IN`
+  and `alert::find` are gone. The loop looks up alert names, so the alert
+  error replies list the current table. The unknown-command reply names
+  seven commands (OpenSpec `configurable-schedule`).
+- The service does not restart after exit status 2
+  (`RestartPreventExitStatus=2`). The deploy installs `deploy/config.toml`
+  only if no config exists.
 
 - The `status` reply ends with `alert=<name>`. The unknown-command reply
   names six commands. `clear` keeps an alert whose clear rule protects it.
