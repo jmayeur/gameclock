@@ -1,6 +1,6 @@
 # Architecture
 
-> The state after `alerts`. Sections marked **Planned** give the agreed
+> The state after `configurable-schedule`. Sections marked **Planned** give the agreed
 > direction (ADRs 0004–0006). They become current as OpenSpec changes merge.
 
 ## Shape
@@ -25,13 +25,14 @@
   or wall clock (ADR-0005). It holds `Frame`, the `Panel` trait,
   `Brightness`, the diagnostic `test_pattern`, the `Scene` trait, the
   `Compositor`, the `Clock` and `Heartbeat` scenes (ADR-0012), the
-  time-of-day `schedule` (ADR-0014), the `message` parts (ADR-0017), and the
-  `effect`, `alert`, and `board` parts (ADR-0018). Time comes in as a
-  `jiff::Zoned` (ADR-0013).
+  time-of-day `schedule` (ADR-0014), and the `message` parts (ADR-0017). It
+  also holds the `effect`, `alert`, and `board` parts (ADR-0018), and the
+  `Tables` that the config gives (ADR-0019). Time comes in as a `jiff::Zoned` (ADR-0013).
 - **`gameclockd`** (exists): the daemon. It checks arguments, handles signals,
   reads the time zone, selects the panel by build feature, and runs the event
   loop below. It also runs the control socket and the `ctl` client
-  (ADR-0016). Planned: config.
+  (ADR-0016). Its `config` module reads the config file with serde and
+  `toml` (ADR-0019).
 - **`rgbmatrix-sys`** (exists): the LED driver, and the only crate with
   `unsafe` (ADR-0004, ADR-0009).
   - Always: the Pi driver defaults (`options`: 64×32, chain 1, parallel 1,
@@ -105,16 +106,21 @@
 - **`effect`** (`gameclock_core::effect`, ADR-0018): the color wheel and the
   contrast color. The wheel moves 3 of its 765 positions each 50 ms
   (`WHEEL_STEP`). `contrast` gives black or white for a background color.
-- **`Alert`, `AlertScene`** (`gameclock_core::alert`, ADR-0018): an `Alert`
-  is static data. It has a name, a background (black or the color wheel), a
-  text, and a text style (font, baseline, color, still or scroll). It also
-  has a duration, a `Priority`, and a `ClearRule`. `BUILT_IN` holds `panic`, `bedtime`, and
-  `bed-flash`. `AlertScene` renders any alert. It finishes at the end of its
+- **`Alert`, `Alerts`, `AlertScene`** (`gameclock_core::alert`, ADR-0018,
+  ADR-0019): an `Alert` is data. It has a name, a background (black or the
+  color wheel), a text, and a text style (font, baseline, color, still or
+  scroll). It also has a duration, a `Priority`, and a `ClearRule`.
+  `Alert::validate` checks the limits. `Alerts` is a table of alerts with
+  unique names, shared as `Rc<Alert>`. `Alerts::legacy()` holds `panic`,
+  `bedtime`, and `bed-flash`. `find` looks up a name, and `names()` lists the
+  names for a reply. `AlertScene` renders any alert. It finishes at the end of its
   duration, or after its last pass if that is earlier. Its brightness comes
   from the legacy schedule.
 - **`Trigger`, `Triggers`** (`gameclock_core::alert`, ADR-0018): a trigger
   rule starts an alert each `every` from `from` to `to`, on its weekdays, in
-  local time. `Trigger::legacy()` is the bedtime warning. `Triggers` keeps
+  local time. `Trigger::new` checks the window and the period.
+  `Trigger::legacy(&alerts)` is the bedtime warning, with only the rules whose
+  alert is in the table. `Triggers` keeps
   the next fire time of each rule. `due(now)` gives each alert that is due,
   one for each rule, and `next()` gives the earliest next fire time.
 - **`Board`** (`gameclock_core::board`, ADR-0018): the message queue and the
@@ -122,7 +128,16 @@
   compositor stack, which holds at most one foreground scene. An alert starts
   only above a lower priority: the base scene, `bed-flash`, a message,
   `bedtime`, then `panic`. An interrupted message goes back to the front of
-  the queue. `clear` keeps an alert whose rule is `Kept`.
+  the queue. `clear` keeps an alert whose rule is `Kept`. `set_schedule`
+  gives the schedule for new scenes.
+- **`Tables`** (`gameclock_core::tables`, ADR-0019): the schedule, the alert
+  table, and the trigger rules. `Tables::legacy()` is the built-in set.
+- **`config`** (`gameclockd`, ADR-0019): `parse` turns the TOML text into
+  `Tables`. serde types with `deny_unknown_fields` mirror the file, and each
+  value keeps its byte range. The core types check the ranges. A
+  `ConfigError` gives `<path>:<line>:<column>: <message>`. A section that is
+  not in the file uses its built-in table. `load` reads the file. A missing
+  file at the default path gives the built-in tables and a note.
 - **`Heartbeat`**: the base scene in the test-pattern mode. It is the test
   pattern with one white pixel on row 1. The pixel moves one column each
   second. It uses full brightness.
@@ -135,10 +150,11 @@
   a shutdown or a command request. A request holds a `Command` and the sender
   for its reply line.
 - **`command`** (`gameclockd`): `parse_command` turns a line into a
-  `Command` (`clock`, `test-pattern`, `status`, `message`, `clear`, or
-  `alert`) or a `CommandError`. The first word selects the command. `message`
-  reads its `--passes` and `--color` options, then takes the rest of the line
-  as the text. `alert` takes a built-in alert name or `stop`. The reply text comes from pure functions.
+  `Command` (`clock`, `test-pattern`, `status`, `message`, `clear`, `alert`,
+  or `reload`) or a `CommandError`. The first word selects the command.
+  `message` reads its `--passes` and `--color` options, then takes the rest
+  of the line as the text. `alert` takes a name or `stop`. The loop looks up
+  the name, because `reload` can change the alert table. The reply text comes from pure functions.
 - **`control`** (`gameclockd`): `listen` makes the socket (mode 0600, a
   stale file is replaced, a live socket is not taken). The `control` thread
   accepts one connection at a time. It gives each client 1 s for its line and
@@ -153,21 +169,26 @@
    is `ctl`, the binary is the client. It joins the words after its options
    with one space. It sends them as one command, writes the
    reply, and exits: 0 for `ok`, 1 for an error, and 2 for a usage error.
-   Otherwise it accepts hzeller `--led-*` flags, `--test-pattern`, and
-   `--control-socket=<path>`. It gives the mode, the socket path, and the
-   driver flags in their order. Any other argument exits 2 before the daemon
-   touches the panel.
-2. **Signals and time.** The daemon registers SIGTERM and SIGINT with the
+   Otherwise it accepts hzeller `--led-*` flags, `--test-pattern`,
+   `--control-socket=<path>`, and `--config=<path>`. It gives the mode, the
+   socket path, the config path, and the driver flags in their order. Any
+   other argument exits 2 before the daemon touches the panel.
+2. **Config.** `config::load` reads the config file (default
+   `/etc/gameclockd/config.toml`). An error writes the path, the line, the
+   column, and the problem, and exits 2. A missing file at the default path
+   gives the built-in tables, with a note on stderr. A missing file from
+   `--config` is an error.
+3. **Signals and time.** The daemon registers SIGTERM and SIGINT with the
    `signal-hook` iterator before the driver starts. The `signals` thread
    sends one shutdown event on the event channel (ADR-0016). Then the daemon
    reads the system time zone once and names it on stderr. If no time zone
    is available, it uses UTC and writes a warning. It also names the base
    scene: the clock, or the test pattern with `--test-pattern`.
-3. **Control socket.** While the process is still root, the daemon listens on
+4. **Control socket.** While the process is still root, the daemon listens on
    the socket (default `/run/gameclockd/control.sock`) and starts the
    `control` thread. If it cannot, it writes a warning and runs with no
    command input.
-4. **Panel, selected at build time.** There are three builds:
+5. **Panel, selected at build time.** There are three builds:
    - `hzeller` (the Pi build, `scripts/build-pi.sh`): `HzellerPanel::new`
      receives the flags.
    - `simulator` (`cargo sim`): `TerminalPanel` draws on stdout.
@@ -175,8 +196,8 @@
 
    Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
    build with `hzeller` and `simulator` together stops with a compile error.
-5. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
-   a `Board` and the legacy `Triggers`. Then it loops:
+6. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
+   a `Board` and the `Triggers` of the config tables. Then it loops:
    1. It gets the time from the clock. The board removes the finished
       scenes. If nothing shows, it starts the first message of the queue as
       a `Scroll` at that time. So the next message starts at the same update
@@ -199,7 +220,12 @@
       - `alert <name>` starts the alert, or gives an error reply if the item
         on the panel has the same or a higher priority. `alert stop` removes
         the alert.
-6. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
+      - `reload` reads the config file again. A correct file gives new
+        tables. New scenes use the new schedule and alerts. The triggers
+        start again from now, and the clock gets the new schedule. The scene
+        on the panel continues. A file with an error gives an error reply,
+        and the tables do not change.
+7. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
    file, and the process exits 0. hzeller stops its refresh thread and
    blanks the LEDs. A panel error exits 1 with the message on stderr.
 

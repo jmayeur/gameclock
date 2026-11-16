@@ -264,6 +264,36 @@ mod log_panel {
     }
 
     #[test]
+    fn reload_through_the_client() {
+        let good = "[schedule]\ndefault = { color = \"0000ff\", brightness = 77 }\n";
+        let path = config_file("reload-config", good);
+        let socket = socket_in_temp_dir("reload-socket");
+        let mut d = Daemon::spawn(&[
+            &format!("--config={}", path.display()),
+            &socket_arg(&socket),
+        ]);
+        d.wait_for(READY);
+        std::fs::write(&path, "[schedule.default]\ncolor = \"ff0000\"\nbrightness = 120\n")
+            .expect("write the bad config");
+        let (code, out, _) = ctl(&[&socket_arg(&socket), "reload"]);
+        assert_eq!(code, Some(1));
+        assert_eq!(
+            out,
+            format!(
+                "error: {}:3:14: the brightness must be from 0 to 100.\n",
+                path.display()
+            )
+        );
+        let (_, status, _) = ctl(&[&socket_arg(&socket), "status"]);
+        assert!(status.contains(" brightness=77 "), "{status}");
+        std::fs::write(&path, good.replace("77", "33")).expect("write the good config");
+        let (code, out, _) = ctl(&[&socket_arg(&socket), "reload"]);
+        assert_eq!((code, out.as_str()), (Some(0), "ok\n"));
+        let (_, status, _) = ctl(&[&socket_arg(&socket), "status"]);
+        assert!(status.contains(" brightness=33 "), "{status}");
+    }
+
+    #[test]
     fn no_file_at_the_default_path() {
         if std::path::Path::new("/etc/gameclockd/config.toml").exists() {
             return; // This host has a config. The test needs none.

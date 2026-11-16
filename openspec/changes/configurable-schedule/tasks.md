@@ -38,8 +38,8 @@
 - [x] 5.1 Red: change the `parse_command` tests: `alert` gives `Command::Alert(None)`, and `alert fire` gives `Command::Alert(Some("fire"))`. Add `reload`. Change the unknown-command reply to seven commands, also in `control.rs`. See them fail.
 - [x] 5.2 Red: write `run` tests with a scripted reload function. Write "Reload with a new schedule" (the present comes before `ok`) and "Reload with an error". Also write "Reload during an alert", "Reload restarts the triggers", and "Reload in the test-pattern mode". Move the "No name" and "Unknown name" tests to `run`, and add one with a table that has only `dinner`. Change all `run` calls to the new arguments. See them fail.
 - [x] 5.3 Green: add `Command::Reload` and `Command::Alert(Option<String>)`, the lookup in the loop, `Board::set_schedule`, `Mode::base_scene(&Schedule)`, and the new `run` arguments (D4, D5). Verify that the 5.1 and 5.2 tests and all earlier tests pass.
-- [ ] 5.4 Red: write the `tests/cli.rs` test "Reload through the client". Start with a correct file, and change it to a file with an error. Then `ctl reload` must exit 1 with the error. Then restore the file and see `ok`. See it fail. Then make it pass in the default and the `simulator` builds.
-- [ ] 5.5 Update `docs/design/architecture.md`: the `config` module, `Tables`, the owned alerts, the start order, and `reload`. Verify with `scripts/lint-docs.sh`.
+- [x] 5.4 Red: write the `tests/cli.rs` test "Reload through the client". Start with a correct file, and change it to a file with an error. Then `ctl reload` must exit 1 with the error. Then restore the file and see `ok`. The code of 5.3 made it pass at once, so a wrong command word in the parser for a short time made it fail. It passes in the default and the `simulator` builds.
+- [x] 5.5 Update `docs/design/architecture.md`: the `config` module, `Tables`, the owned alerts, the start order, and `reload`. Verify with `scripts/lint-docs.sh`.
 
 ## 6. Deployment (`pi-deployment`)
 
