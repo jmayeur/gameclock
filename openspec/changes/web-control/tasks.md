@@ -44,7 +44,7 @@
 
 ## 7. Simulator verification
 
-- [ ] 7.1 Run the `simulator` build with `--http=127.0.0.1:8080`. Ask the user to look at the page in a browser on the dev machine. Use `curl` to post a message, the `panic` alert, `clear`, and `alert stop`. Verify the frames in the captured output and the status codes. Post a `msg` of 65 characters and a cross-site `Origin`, and verify 400 and 403. Record the results here.
+- [x] 7.1 Run the `simulator` build with `--http=127.0.0.1:8080`. Ask the user to look at the page in a browser on the dev machine. Use `curl` to post a message, the `panic` alert, `clear`, and `alert stop`. Verify the frames in the captured output and the status codes. Post a `msg` of 65 characters and a cross-site `Origin`, and verify 400 and 403. Record the results here. Result: `GET /` 200, `/health` `{"status":"ok"}`. A red message (200) gave `messages=1` and red cells (153,0,0 at brightness 60). `panic` (200) gave `alert=panic` and the color wheel. `clear` (200) removed both. The legacy `msg=bedtime` (200) gave `alert=bedtime` and lime cells. `alert stop` (200) gave `alert=none`. 65 characters gave 400, a cross-site `Origin` 403, the same-site `Origin` 200, and `name=dinner` 400. The user looked at the page in a browser and said that it looks and works correctly.
 
 ## 8. On-device verification and measurements
 
