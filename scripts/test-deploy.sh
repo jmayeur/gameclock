@@ -60,6 +60,11 @@ called "systemctl restart gameclockd"
 not_called "enable"
 not_called "disable"
 
+# The example config is copied. The remote command installs it only if no
+# config exists, so an edited config stays (openspec/specs/pi-deployment).
+called "deploy/config.toml"
+called "[ -e /etc/gameclockd/config.toml ] || sudo install -D -m 644"
+
 # --enable: also swap the boot service.
 run 0 --enable
 called "systemctl restart gameclockd"

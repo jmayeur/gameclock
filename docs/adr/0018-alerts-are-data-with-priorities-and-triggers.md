@@ -2,7 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-15
-- **Related:** ADR-0005, ADR-0006, ADR-0012, ADR-0013, ADR-0014, ADR-0017.
+- **Related:** ADR-0005, ADR-0006, ADR-0012, ADR-0013, ADR-0014, ADR-0017,
+  ADR-0019.
   OpenSpec change `alerts`.
 
 ## Context

@@ -208,6 +208,105 @@ mod log_panel {
         assert!(d.stderr_contains("--frobnicate"), "stderr: {:?}", d.seen);
     }
 
+    /// A config file with `text` in a new temporary directory.
+    fn config_file(name: &str, text: &str) -> std::path::PathBuf {
+        let path = socket_in_temp_dir(name).with_file_name("config.toml");
+        std::fs::write(&path, text).expect("write the config file");
+        path
+    }
+
+    #[test]
+    fn bad_file_at_start() {
+        let path = config_file(
+            "bad-config",
+            "[schedule.default]\ncolor = \"ff0000\"\nbrightness = 120\n",
+        );
+        let mut d = Daemon::spawn(&[&format!("--config={}", path.display())]);
+        let status = d.exit_within(Duration::from_secs(5));
+        d.drain();
+        assert_eq!(status.code(), Some(2), "stderr: {:?}", d.seen);
+        let expected = format!(
+            "gameclockd: {}:3:14: the brightness must be from 0 to 100.",
+            path.display()
+        );
+        assert!(d.stderr_contains(&expected), "stderr: {:?}", d.seen);
+        assert_eq!(d.presents_seen(), 0, "no present before the exit");
+    }
+
+    #[test]
+    fn missing_file_at_a_given_path() {
+        let path = socket_in_temp_dir("no-config").with_file_name("none.toml");
+        let mut d = Daemon::spawn(&[&format!("--config={}", path.display())]);
+        let status = d.exit_within(Duration::from_secs(5));
+        d.drain();
+        assert_eq!(status.code(), Some(2));
+        let expected = format!("gameclockd: cannot read {}: ", path.display());
+        assert!(d.stderr_contains(&expected), "stderr: {:?}", d.seen);
+        assert_eq!(d.presents_seen(), 0);
+    }
+
+    #[test]
+    fn start_with_a_correct_file() {
+        let path = config_file(
+            "good-config",
+            "[schedule]\ndefault = { color = \"0000ff\", brightness = 77 }\n",
+        );
+        let socket = socket_in_temp_dir("good-config-socket");
+        let mut d = Daemon::spawn(&[
+            &format!("--config={}", path.display()),
+            &socket_arg(&socket),
+        ]);
+        d.wait_for(READY);
+        let (code, out, _) = ctl(&[&socket_arg(&socket), "status"]);
+        assert_eq!(code, Some(0));
+        assert!(out.contains(" brightness=77 "), "{out}");
+        assert!(!d.stderr_contains("no config at"), "stderr: {:?}", d.seen);
+    }
+
+    #[test]
+    fn reload_through_the_client() {
+        let good = "[schedule]\ndefault = { color = \"0000ff\", brightness = 77 }\n";
+        let path = config_file("reload-config", good);
+        let socket = socket_in_temp_dir("reload-socket");
+        let mut d = Daemon::spawn(&[
+            &format!("--config={}", path.display()),
+            &socket_arg(&socket),
+        ]);
+        d.wait_for(READY);
+        std::fs::write(
+            &path,
+            "[schedule.default]\ncolor = \"ff0000\"\nbrightness = 120\n",
+        )
+        .expect("write the bad config");
+        let (code, out, _) = ctl(&[&socket_arg(&socket), "reload"]);
+        assert_eq!(code, Some(1));
+        assert_eq!(
+            out,
+            format!(
+                "error: {}:3:14: the brightness must be from 0 to 100.\n",
+                path.display()
+            )
+        );
+        let (_, status, _) = ctl(&[&socket_arg(&socket), "status"]);
+        assert!(status.contains(" brightness=77 "), "{status}");
+        std::fs::write(&path, good.replace("77", "33")).expect("write the good config");
+        let (code, out, _) = ctl(&[&socket_arg(&socket), "reload"]);
+        assert_eq!((code, out.as_str()), (Some(0), "ok\n"));
+        let (_, status, _) = ctl(&[&socket_arg(&socket), "status"]);
+        assert!(status.contains(" brightness=33 "), "{status}");
+    }
+
+    #[test]
+    fn no_file_at_the_default_path() {
+        if std::path::Path::new("/etc/gameclockd/config.toml").exists() {
+            return; // This host has a config. The test needs none.
+        }
+        let mut d = Daemon::spawn(&[]);
+        d.wait_for(
+            "gameclockd: no config at /etc/gameclockd/config.toml. The built-in tables apply.",
+        );
+    }
+
     #[test]
     fn time_zone_from_the_environment() {
         let mut d = Daemon::spawn_with_env(&[], &[("TZ", "America/Los_Angeles")]);

@@ -5,7 +5,7 @@
 //! binary only.
 
 use gameclock_core::Compositor;
-use gameclock_core::alert::{AlertScene, BUILT_IN};
+use gameclock_core::alert::{AlertScene, Alerts};
 use gameclock_core::clock::Clock;
 use gameclock_core::heartbeat::Heartbeat;
 use gameclock_core::message::{Message, STEP, Scroll};
@@ -96,9 +96,9 @@ fn one_thousand_scroll_steps_allocate_nothing() {
 
 #[test]
 fn one_thousand_alert_updates_allocate_nothing() {
-    for alert in BUILT_IN {
+    for alert in Alerts::legacy().iter() {
         let start: Timestamp = "2026-11-16T12:00:00Z".parse().unwrap();
-        let scene = AlertScene::new(alert, start, 64, Schedule::legacy());
+        let scene = AlertScene::new(std::rc::Rc::clone(alert), start, 64, Schedule::legacy());
         let mut compositor = Compositor::new(Box::new(Clock::new(Schedule::legacy())), 64, 32);
         compositor.push(Box::new(scene));
         assert!(compositor.update(&start.to_zoned(TimeZone::UTC)).is_some());

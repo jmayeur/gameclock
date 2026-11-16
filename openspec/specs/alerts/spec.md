@@ -13,7 +13,8 @@ triggers, and the `alert` command.
 Each alert SHALL be a definition with a name, a background effect, a text, a
 text style, a duration, a priority, and a clear rule. One alert scene SHALL
 render each definition. The built-in definitions are `panic`, `bedtime`, and
-`bed-flash`.
+`bed-flash`. They apply when the config has no `[[alert]]` entries. Alerts in
+the config replace them.
 
 #### Scenario: Built-in alerts
 - **WHEN** a client sends `alert panic`, `alert bedtime`, or `alert bed-flash` while the clock shows
@@ -139,7 +140,8 @@ the first frame of a started alert before it replies `ok`.
 ### Requirement: The alert command
 The command `alert <name>` SHALL start the named alert. The command `alert
 stop` SHALL remove the alert on the panel and reply `ok`. A missing or
-unknown name SHALL get an error reply.
+unknown name SHALL get an error reply. The reply SHALL list the names of the
+alert table that applies now, in the order of the table.
 
 #### Scenario: No name
 - **WHEN** a client sends `alert`
@@ -173,8 +175,9 @@ permits it. `clear` SHALL remove `panic`. It SHALL NOT remove `bedtime` or
 - **AND** the clock shows after `bedtime` finishes
 
 ### Requirement: Timed triggers start the bedtime warning
-On bedtime nights (Sunday to Thursday, local time), the daemon SHALL start
-`bed-flash` each 10 s from 23:00:00 to before 23:05:00. It SHALL start
+If the config has no `[[trigger]]` entries, the built-in trigger rules
+SHALL apply. On bedtime nights (Sunday to Thursday, local time), they SHALL start
+`bed-flash` each 10 s from 23:00:00 to before 23:05:00. They SHALL start
 `bedtime` each 10 s from 23:05:00 to before 23:16:00. A triggered alert SHALL
 follow the priority rules. A refused trigger SHALL change nothing.
 

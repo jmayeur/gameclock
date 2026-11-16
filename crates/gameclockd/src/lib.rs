@@ -10,15 +10,18 @@ use std::time::Duration;
 pub mod sim;
 
 pub mod command;
+pub mod config;
 pub mod control;
 
-use command::{Command, OK, status_reply};
+use command::{Command, OK, no_alert_name_reply, status_reply, unknown_alert_reply};
+use config::{ConfigError, Origin};
 
-use gameclock_core::alert::{Trigger, Triggers};
+use gameclock_core::alert::Triggers;
 use gameclock_core::board::Board;
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
 use gameclock_core::schedule::Schedule;
+use gameclock_core::tables::Tables;
 use gameclock_core::{Brightness, Compositor, Frame, Panel, Scene};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
@@ -184,13 +187,20 @@ pub fn run<P: Panel>(
     panel: &mut P,
     base: Box<dyn Scene>,
     mut mode: Mode,
+    tables: Tables,
+    mut reload: impl FnMut() -> Result<Tables, ConfigError>,
     clock: &impl Clock,
     wait: &mut impl Wait,
 ) -> Result<(), RunError<P::Error>> {
     let (width, height) = panel.dimensions();
     let mut compositor = Compositor::new(base, width, height);
-    let mut board = Board::new(width, Schedule::legacy());
-    let mut triggers = Triggers::new(Trigger::legacy(), &clock.now());
+    let Tables {
+        mut schedule,
+        mut alerts,
+        triggers,
+    } = tables;
+    let mut board = Board::new(width, schedule.clone());
+    let mut triggers = Triggers::new(triggers, &clock.now());
     loop {
         let now = clock.now();
         board.advance(&now, &mut compositor);
@@ -213,7 +223,7 @@ pub fn run<P: Panel>(
                     Command::Mode(next) => {
                         if next != mode {
                             mode = next;
-                            compositor.set_base(next.base_scene());
+                            compositor.set_base(next.base_scene(&schedule));
                             board.advance(&now, &mut compositor);
                             present(panel, &mut compositor, &now)?;
                         }
@@ -243,12 +253,33 @@ pub fn run<P: Panel>(
                         present(panel, &mut compositor, &now)?;
                         OK.to_owned()
                     }
-                    Command::Alert(alert) => match board.alert(alert, &now, &mut compositor) {
-                        Ok(()) => {
-                            present(panel, &mut compositor, &now)?;
+                    Command::Alert(None) => no_alert_name_reply(&alerts),
+                    Command::Alert(Some(name)) => match alerts.find(&name) {
+                        Some(alert) => match board.alert(alert, &now, &mut compositor) {
+                            Ok(()) => {
+                                present(panel, &mut compositor, &now)?;
+                                OK.to_owned()
+                            }
+                            Err(refused) => format!("error: {refused}"),
+                        },
+                        None => unknown_alert_reply(&name, &alerts),
+                    },
+                    Command::Reload => match reload() {
+                        Ok(new) => {
+                            // The scene on the panel keeps its alert and its
+                            // schedule. New scenes use the new tables.
+                            schedule = new.schedule;
+                            alerts = new.alerts;
+                            triggers = Triggers::new(new.triggers, &now);
+                            board.set_schedule(schedule.clone());
+                            if mode == Mode::Clock {
+                                compositor.set_base(mode.base_scene(&schedule));
+                                board.advance(&now, &mut compositor);
+                                present(panel, &mut compositor, &now)?;
+                            }
                             OK.to_owned()
                         }
-                        Err(refused) => format!("error: {refused}"),
+                        Err(e) => format!("error: {e}"),
                     },
                     Command::StopAlert => {
                         board.stop_alert(&now, &mut compositor);
@@ -280,11 +311,13 @@ fn present<P: Panel>(
 /// A command line that the binary does not accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageError {
-    /// An argument that is not a `--led-*` driver flag, `--test-pattern`, or
-    /// `--control-socket=<path>`.
+    /// An argument that is not a `--led-*` driver flag, `--test-pattern`,
+    /// `--control-socket=<path>`, or `--config=<path>`.
     Unknown(String),
     /// `--control-socket=` with no path.
     EmptySocketPath,
+    /// `--config=` with no path.
+    EmptyConfigPath,
     /// `ctl` with no command.
     Ctl,
 }
@@ -294,11 +327,15 @@ impl fmt::Display for UsageError {
         match self {
             Self::Unknown(arg) => write!(
                 f,
-                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
+                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, and --config=<path>."
             ),
             Self::EmptySocketPath => write!(
                 f,
                 "--control-socket needs a path, for example --control-socket={DEFAULT_SOCKET}."
+            ),
+            Self::EmptyConfigPath => write!(
+                f,
+                "--config needs a path, for example --config={DEFAULT_CONFIG}."
             ),
             Self::Ctl => {
                 f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command> [<word>...]")
@@ -324,9 +361,9 @@ pub enum Mode {
 impl Mode {
     /// Make the base scene of this mode.
     #[must_use]
-    pub fn base_scene(self) -> Box<dyn Scene> {
+    pub fn base_scene(self, schedule: &Schedule) -> Box<dyn Scene> {
         match self {
-            Self::Clock => Box::new(ClockScene::new(Schedule::legacy())),
+            Self::Clock => Box::new(ClockScene::new(schedule.clone())),
             Self::TestPattern => Box::new(Heartbeat),
         }
     }
@@ -359,6 +396,10 @@ pub struct Args {
     pub driver: Vec<String>,
     /// The path of the control socket.
     pub socket: PathBuf,
+    /// The path of the config file (docs/adr/0019).
+    pub config: PathBuf,
+    /// Where the config path came from.
+    pub config_origin: Origin,
 }
 
 /// The checked command line of `gameclockd ctl`.
@@ -385,6 +426,12 @@ pub const DEFAULT_SOCKET: &str = "/run/gameclockd/control.sock";
 /// The argument that changes the path of the control socket.
 const CONTROL_SOCKET: &str = "--control-socket=";
 
+/// The default path of the config file (docs/adr/0019).
+pub const DEFAULT_CONFIG: &str = "/etc/gameclockd/config.toml";
+
+/// The argument that changes the path of the config file.
+const CONFIG: &str = "--config=";
+
 /// The path of a `--control-socket=<path>` argument, or `None` for another
 /// argument.
 fn socket_path(arg: &str) -> Option<Result<PathBuf, UsageError>> {
@@ -398,7 +445,8 @@ fn socket_path(arg: &str) -> Option<Result<PathBuf, UsageError>> {
 
 /// Check the command line. If the first argument is `ctl`, the rest is the
 /// client's command line. Otherwise only `--led-*` driver flags,
-/// `--test-pattern`, and `--control-socket=<path>` are accepted. The
+/// `--test-pattern`, `--control-socket=<path>`, and `--config=<path>` are
+/// accepted. The
 /// function gives the driver flags unchanged and in their order, for the
 /// driver to parse (`openspec/specs/daemon-lifecycle`, docs/adr/0009).
 ///
@@ -417,12 +465,20 @@ where
         mode: Mode::Clock,
         driver: Vec::new(),
         socket: PathBuf::from(DEFAULT_SOCKET),
+        config: PathBuf::from(DEFAULT_CONFIG),
+        config_origin: Origin::Default,
     };
     for arg in args {
         if arg == TEST_PATTERN {
             parsed.mode = Mode::TestPattern;
         } else if let Some(path) = socket_path(&arg) {
             parsed.socket = path?;
+        } else if let Some(path) = arg.strip_prefix(CONFIG) {
+            if path.is_empty() {
+                return Err(UsageError::EmptyConfigPath);
+            }
+            parsed.config = PathBuf::from(path);
+            parsed.config_origin = Origin::Argument;
         } else if arg.starts_with("--led-") {
             parsed.driver.push(arg);
         } else {
@@ -508,8 +564,10 @@ mod tests {
     use std::sync::mpsc;
 
     use crate::command::{Command, OK};
-    use gameclock_core::alert::AlertScene;
+    use crate::config::ConfigError;
+    use gameclock_core::alert::{Alert, AlertScene, Alerts, Trigger};
     use gameclock_core::message::{Message, Scroll};
+    use gameclock_core::schedule::{Style, TimeOfDay, Weekdays};
 
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::embedded_graphics::prelude::*;
@@ -645,6 +703,8 @@ mod tests {
             panel,
             Box::new(Heartbeat),
             Mode::TestPattern,
+            Tables::legacy(),
+            no_reload,
             &clock,
             &mut wait,
         );
@@ -723,6 +783,8 @@ mod tests {
             mode: Mode::Clock,
             driver: given.clone(),
             socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -733,6 +795,8 @@ mod tests {
             mode: Mode::Clock,
             driver: Vec::new(),
             socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(Vec::new()), Ok(Invocation::Daemon(expected)));
     }
@@ -748,6 +812,8 @@ mod tests {
             mode: Mode::TestPattern,
             driver: args(&["--led-pwm-bits=8", "--led-slowdown-gpio=1"]),
             socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -759,8 +825,40 @@ mod tests {
             mode: Mode::Clock,
             driver: args(&["--led-pwm-bits=8"]),
             socket: PathBuf::from("/tmp/a.sock"),
+            config: PathBuf::from(DEFAULT_CONFIG),
+            config_origin: Origin::Default,
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn default_config_path() {
+        assert_eq!(DEFAULT_CONFIG, "/etc/gameclockd/config.toml");
+        let Ok(Invocation::Daemon(parsed)) = parse_args(args(&[])) else {
+            panic!("a daemon invocation");
+        };
+        assert_eq!(parsed.config, PathBuf::from(DEFAULT_CONFIG));
+        assert_eq!(parsed.config_origin, Origin::Default);
+    }
+
+    #[test]
+    fn config_path_from_the_argument() {
+        let given = args(&["--config=/tmp/gc.toml", "--led-pwm-bits=8"]);
+        let expected = Args {
+            mode: Mode::Clock,
+            driver: args(&["--led-pwm-bits=8"]),
+            socket: PathBuf::from(DEFAULT_SOCKET),
+            config: PathBuf::from("/tmp/gc.toml"),
+            config_origin: Origin::Argument,
+        };
+        assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
+    }
+
+    #[test]
+    fn empty_config_path_is_a_usage_error() {
+        let err = parse_args(args(&["--config="])).unwrap_err();
+        assert_eq!(err, UsageError::EmptyConfigPath);
+        assert!(err.to_string().contains("--config"), "{err}");
     }
 
     #[test]
@@ -850,13 +948,17 @@ mod tests {
     fn modes_make_their_base_scene() {
         let now = ts("2026-11-10T09:05:00Z").to_zoned(TimeZone::UTC);
         let mut clock = Frame::new(64, 32);
-        Mode::Clock.base_scene().render(&now, &mut clock);
+        Mode::Clock
+            .base_scene(&Schedule::legacy())
+            .render(&now, &mut clock);
         let mut expected = Frame::new(64, 32);
         legacy_clock().render(&now, &mut expected);
         assert_eq!(clock, expected);
 
         let mut pattern = Frame::new(64, 32);
-        Mode::TestPattern.base_scene().render(&now, &mut pattern);
+        Mode::TestPattern
+            .base_scene(&Schedule::legacy())
+            .render(&now, &mut pattern);
         let mut expected = Frame::new(64, 32);
         Heartbeat.render(&now, &mut expected);
         assert_eq!(pattern, expected);
@@ -878,7 +980,16 @@ mod tests {
     fn one_present_at_startup() {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, []);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.presents.len(), 1);
         let (frame, brightness) = &panel.presents[0];
         assert_eq!(*frame, clock_frame(64, 32, START));
@@ -901,6 +1012,8 @@ mod tests {
             &mut panel,
             Box::new(Dim { after: 25 }),
             Mode::Clock,
+            Tables::legacy(),
+            no_reload,
             &clock,
             &mut wait,
         )
@@ -917,6 +1030,8 @@ mod tests {
             &mut panel,
             Box::new(Dim { after: 60 }),
             Mode::Clock,
+            Tables::legacy(),
+            no_reload,
             &clock,
             &mut wait,
         )
@@ -945,7 +1060,16 @@ mod tests {
     fn static_scene_waits_until_the_next_trigger() {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, []);
-        run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            Box::new(Red),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         // START is a Thursday, a bedtime night (`openspec/specs/alerts`).
         assert_eq!(wait.deadlines, vec![Some(ts("1970-01-01T23:00:00Z"))]);
         assert_eq!(panel.presents.len(), 1);
@@ -964,7 +1088,16 @@ mod tests {
         let mut panel = Recorder::new(64, 32);
         let (tx, rx) = mpsc::channel();
         let (clock, mut wait) = script(START, [Step::CommandAt(at, command, tx)]);
-        run(&mut panel, base, mode, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            base,
+            mode,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         let reply = rx.try_recv().expect("a reply");
         (panel, wait, reply)
     }
@@ -1084,7 +1217,16 @@ mod tests {
     fn run_clock(steps: Vec<Step>) -> (Recorder, ScriptedWait) {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(START, steps);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         (panel, wait)
     }
 
@@ -1098,7 +1240,16 @@ mod tests {
             reply_before_present: Vec::new(),
         };
         let (clock, mut wait) = script(START, [Step::CommandAt(T1, message("hello", 4), tx)]);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
         assert_eq!(panel.inner.presents[1].0, scroll_frame("hello", T1, T1));
@@ -1191,7 +1342,16 @@ mod tests {
             Step::EarlyAt(after_t1(20_000)),
         ];
         let (clock, mut wait) = script(START, steps);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
         let presents = &panel.inner.presents;
         assert_eq!(presents.len(), 4, "the clock, one, one, the clock");
@@ -1226,15 +1386,265 @@ mod tests {
         assert_eq!(panel.presents[1].1, Brightness::new(25));
     }
 
+    /// The reload function of a test with no `reload` command.
+    fn no_reload() -> Result<Tables, ConfigError> {
+        panic!("this test sends no reload command");
+    }
+
+    // The reload command reads the file again (`openspec/specs/daemon-config`).
+
+    fn green() -> Tables {
+        let green = Style::new(Rgb888::new(0, 255, 0), Brightness::new(60));
+        Tables {
+            schedule: Schedule::new(Vec::new(), green),
+            ..Tables::legacy()
+        }
+    }
+
+    fn bad_file() -> ConfigError {
+        ConfigError::Parse {
+            path: "/tmp/gc.toml".into(),
+            line: 3,
+            column: 14,
+            message: "the brightness must be from 0 to 100.".into(),
+        }
+    }
+
+    /// Run the clock with `steps`, from `start`. Each reload gives the next
+    /// result of `reloads`.
+    fn run_reloads(
+        start: &str,
+        base: Box<dyn Scene>,
+        mode: Mode,
+        reloads: Vec<Result<Tables, ConfigError>>,
+        steps: Vec<Step>,
+    ) -> ReplyWatch {
+        let (_, rx) = mpsc::channel();
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::new(rx),
+            reply_before_present: Vec::new(),
+        };
+        let mut reloads = reloads.into_iter();
+        let reload = move || reloads.next().expect("a scripted reload");
+        let (clock, mut wait) = script(start, steps);
+        run(
+            &mut panel,
+            base,
+            mode,
+            Tables::legacy(),
+            reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
+        panel
+    }
+
+    fn green_clock_frame(time: &str) -> Frame {
+        let mut f = Frame::new(64, 32);
+        ClockScene::new(green().schedule).render(&ts(time).to_zoned(TimeZone::UTC), &mut f);
+        f
+    }
+
+    #[test]
+    fn reload_with_a_new_schedule() {
+        let (tx, rx) = mpsc::channel();
+        let replies = Rc::new(rx);
+        let mut panel = ReplyWatch {
+            inner: Recorder::new(64, 32),
+            replies: Rc::clone(&replies),
+            reply_before_present: Vec::new(),
+        };
+        let mut reloads = vec![Ok(green())].into_iter();
+        let reload = move || reloads.next().expect("one reload");
+        let (clock, mut wait) = script(START, [Step::CommandAt(T1, Command::Reload, tx)]);
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
+        assert_eq!(replies.try_recv().as_deref(), Ok(OK));
+        assert_eq!(panel.reply_before_present, vec![false, false]);
+        assert_eq!(panel.inner.presents[1].0, green_clock_frame(T1));
+        assert_eq!(panel.inner.presents[1].1, Brightness::new(60));
+    }
+
+    #[test]
+    fn reload_with_an_error() {
+        let (step, reply) = command_at(T1, Command::Reload);
+        let panel = run_reloads(
+            START,
+            legacy_clock(),
+            Mode::Clock,
+            vec![Err(bad_file())],
+            vec![step, Step::EarlyAt(after_t1(60_000))],
+        );
+        assert_eq!(
+            reply.try_recv().unwrap(),
+            "error: /tmp/gc.toml:3:14: the brightness must be from 0 to 100."
+        );
+        let clock = clock_frame(64, 32, START);
+        assert!(
+            panel
+                .inner
+                .presents
+                .iter()
+                .all(|(f, _)| *f == clock || *f == clock_frame(64, 32, after_t1(60_000)))
+        );
+    }
+
+    #[test]
+    fn reload_during_an_alert() {
+        let mut changed = Tables::legacy();
+        let mut panic = (*changed.alerts.find("panic").unwrap()).clone();
+        panic.text = "HELP".to_owned();
+        let mut list: Vec<Alert> = changed.alerts.iter().map(|a| (**a).clone()).collect();
+        list[0] = panic;
+        changed.alerts = Alerts::new(list).unwrap();
+        let (start_panic, _r1) = command_at(T1, alert("panic"));
+        let (reload, r2) = command_at(after_t1(1000), Command::Reload);
+        let (again, _r3) = command_at(after_t1(21_000), alert("panic"));
+        let steps = vec![start_panic, reload, Step::EarlyAt(after_t1(2000)), again];
+        let panel = run_reloads(
+            START,
+            legacy_clock(),
+            Mode::Clock,
+            vec![Ok(changed.clone())],
+            steps,
+        );
+        assert_eq!(r2.try_recv().as_deref(), Ok(OK));
+        let frames: Vec<_> = panel
+            .inner
+            .presents
+            .iter()
+            .map(|(f, _)| f.clone())
+            .collect();
+        assert!(
+            frames.contains(&alert_frame("panic", T1, after_t1(2000))),
+            "the old panic continues"
+        );
+        let new_panic = changed.alerts.find("panic").unwrap();
+        let mut f = Frame::new(64, 32);
+        AlertScene::new(new_panic, ts(after_t1(21_000)), 64, Schedule::legacy())
+            .render(&ts(after_t1(21_000)).to_zoned(TimeZone::UTC), &mut f);
+        assert_eq!(
+            *frames.last().unwrap(),
+            f,
+            "the next panic uses the new definition"
+        );
+    }
+
+    #[test]
+    fn reload_restarts_the_triggers() {
+        // 2026-11-16 is a Monday. The built-in triggers start at 23:00.
+        let mut every_minute = Tables::legacy();
+        let panic = every_minute.alerts.find("panic").unwrap();
+        let rule = Trigger::new(
+            Weekdays::EACH_DAY,
+            TimeOfDay::hm(22, 0).unwrap(),
+            TimeOfDay::hm(23, 0).unwrap(),
+            jiff::SignedDuration::from_secs(60),
+            panic,
+        )
+        .unwrap();
+        every_minute.triggers = vec![rule];
+        let (reload, r) = command_at("2026-11-16T22:00:00.500Z", Command::Reload);
+        let steps = vec![reload, Step::Deadline];
+        let panel = run_reloads(
+            "2026-11-16T22:00:00.250Z",
+            legacy_clock(),
+            Mode::Clock,
+            vec![Ok(every_minute)],
+            steps,
+        );
+        assert_eq!(r.try_recv().as_deref(), Ok(OK));
+        let at = "2026-11-16T22:01:00Z";
+        assert_eq!(
+            panel.inner.presents.last().unwrap().0,
+            alert_frame("panic", at, at)
+        );
+    }
+
+    #[test]
+    fn reload_in_the_test_pattern_mode() {
+        let (reload, r1) = command_at(T1, Command::Reload);
+        let (clock, r2) = command_at(after_t1(100), Command::Mode(Mode::Clock));
+        let panel = run_reloads(
+            START,
+            Box::new(Heartbeat),
+            Mode::TestPattern,
+            vec![Ok(green())],
+            vec![reload, clock],
+        );
+        assert_eq!(r1.try_recv().as_deref(), Ok(OK));
+        assert_eq!(r2.try_recv().as_deref(), Ok(OK));
+        let presents = &panel.inner.presents;
+        assert_eq!(presents.len(), 2, "the heartbeat, then the green clock");
+        assert_eq!(presents[0].0, heartbeat_frame(64, 32, START));
+        assert_eq!(presents[1].0, green_clock_frame(after_t1(100)));
+    }
+
+    #[test]
+    fn alert_with_no_name_in_the_loop() {
+        let (step, reply) = command_at(T1, Command::Alert(None));
+        run_clock(vec![step]);
+        assert_eq!(
+            reply.try_recv().unwrap(),
+            "error: the alert command has no name. The alerts are panic, bedtime, and bed-flash."
+        );
+    }
+
+    #[test]
+    fn unknown_alert_in_the_loop() {
+        let (step, reply) = command_at(T1, alert("fire"));
+        run_clock(vec![step]);
+        assert_eq!(
+            reply.try_recv().unwrap(),
+            "error: unknown alert 'fire'. The alerts are panic, bedtime, and bed-flash."
+        );
+    }
+
+    #[test]
+    fn unknown_alert_names_the_current_table() {
+        let dinner = Alert {
+            name: "dinner".to_owned(),
+            ..(*Alerts::legacy().find("bed-flash").unwrap()).clone()
+        };
+        let only_dinner = Tables {
+            alerts: Alerts::new(vec![dinner]).unwrap(),
+            triggers: Vec::new(),
+            ..Tables::legacy()
+        };
+        let (reload, _r1) = command_at(T1, Command::Reload);
+        let (panic, r2) = command_at(after_t1(100), alert("panic"));
+        run_reloads(
+            START,
+            legacy_clock(),
+            Mode::Clock,
+            vec![Ok(only_dinner)],
+            vec![reload, panic],
+        );
+        assert_eq!(
+            r2.try_recv().unwrap(),
+            "error: unknown alert 'panic'. The alerts are dinner."
+        );
+    }
+
     // Alerts and timed triggers (`openspec/specs/alerts`).
 
     fn alert(name: &str) -> Command {
-        Command::Alert(gameclock_core::alert::find(name).unwrap())
+        Command::Alert(Some(name.to_owned()))
     }
 
     /// The frame of the alert `name` that starts at `start`, at the time `at`.
     fn alert_frame(name: &str, start: &str, at: &str) -> Frame {
-        let a = gameclock_core::alert::find(name).unwrap();
+        let a = gameclock_core::alert::Alerts::legacy().find(name).unwrap();
         let mut scene = AlertScene::new(a, ts(start), 64, Schedule::legacy());
         let mut f = Frame::new(64, 32);
         scene.render(&ts(at).to_zoned(TimeZone::UTC), &mut f);
@@ -1244,7 +1654,16 @@ mod tests {
     fn run_clock_from(start: &str, steps: Vec<Step>) -> (Recorder, ScriptedWait) {
         let mut panel = Recorder::new(64, 32);
         let (clock, mut wait) = script(start, steps);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         (panel, wait)
     }
 
@@ -1258,7 +1677,16 @@ mod tests {
             reply_before_present: Vec::new(),
         };
         let (clock, mut wait) = script(START, [Step::CommandAt(T1, alert("panic"), tx)]);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
         assert_eq!(panel.inner.presents[1].0, alert_frame("panic", T1, T1));
@@ -1348,6 +1776,8 @@ mod tests {
             &mut panel,
             Box::new(Heartbeat),
             Mode::TestPattern,
+            Tables::legacy(),
+            no_reload,
             &clock,
             &mut wait,
         )
@@ -1391,7 +1821,16 @@ mod tests {
             tx,
         );
         let (clock, mut wait) = script(START, [step]);
-        run(&mut panel, legacy_clock(), Mode::Clock, &clock, &mut wait).unwrap();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            Tables::legacy(),
+            no_reload,
+            &clock,
+            &mut wait,
+        )
+        .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
     }
@@ -1429,7 +1868,7 @@ mod tests {
         );
         assert_eq!(
             UsageError::Unknown("--frobnicate".into()).to_string(),
-            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, and --control-socket=<path>."
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, and --config=<path>."
         );
     }
 
@@ -1527,7 +1966,16 @@ mod tests {
                 tx.send(Event::Shutdown).unwrap();
             });
             let start = Instant::now();
-            run(&mut panel, Box::new(Red), Mode::Clock, &clock, &mut wait).unwrap();
+            run(
+                &mut panel,
+                Box::new(Red),
+                Mode::Clock,
+                Tables::legacy(),
+                no_reload,
+                &clock,
+                &mut wait,
+            )
+            .unwrap();
             assert!(
                 start.elapsed() >= Duration::from_millis(500),
                 "run must wait"

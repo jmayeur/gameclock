@@ -1,0 +1,112 @@
+# The config of gameclockd (docs/config.md, docs/adr/0019).
+#
+# This file has the built-in legacy tables. Edit it, then send
+# `sudo gameclockd ctl reload`. The reply is `ok`, or the error with its line
+# and column. After an error, the daemon keeps the tables that it has.
+#
+# Each section is optional. A section in this file replaces the whole
+# built-in table of that section. If you remove a section, its built-in table
+# applies.
+
+# The clock color and the panel brightness for each local time.
+# The first rule that matches gives the style. The default style applies at
+# the times that no rule matches. A rule with no `days` applies on each day.
+# `to` is not part of the rule: 06:00 to 10:00 ends at 09:59.
+[schedule]
+default = { color = "ff0000", brightness = 25 }
+
+[[schedule.rule]]
+from = "00:00"
+to = "06:00"
+color = "ff0000" # red
+brightness = 25
+
+[[schedule.rule]]
+from = "06:00"
+to = "10:00"
+color = "0000ff" # blue
+brightness = 100
+
+[[schedule.rule]]
+from = "10:00"
+to = "21:00"
+color = "0000ff"
+brightness = 60
+
+[[schedule.rule]]
+from = "21:00"
+to = "23:00"
+color = "ff8c00" # mellow
+brightness = 60
+
+# Bedtime nights: full brightness during the bedtime warning.
+[[schedule.rule]]
+days = ["sun", "mon", "tue", "wed", "thu"]
+from = "23:00"
+to = "23:15"
+color = "ff8c00"
+brightness = 100
+
+[[schedule.rule]]
+from = "23:00"
+to = "24:00"
+color = "ff8c00"
+brightness = 25
+
+# The alerts. `sudo gameclockd ctl alert <name>` starts one.
+# An alert starts only if its priority is higher than the priority of the
+# item on the panel. A message has the priority 20.
+# A still text has `x`. A scrolling text has `passes`.
+
+[[alert]]
+name = "panic"
+text = "PANIC!!"
+background = "color-wheel"
+font = "small"
+baseline = 20
+color = "contrast" # black or white, whichever is easier to read
+x = 9
+seconds = 20
+priority = 40
+clear = "removable" # the clear command removes it
+
+[[alert]]
+name = "bedtime"
+text = "GAME OVER - TURN IT OFF!"
+background = "black"
+font = "large"
+baseline = 25
+color = "32cd32" # lime
+passes = 2
+seconds = 20
+priority = 30
+clear = "kept" # the clear command does not remove it. `alert stop` does.
+
+[[alert]]
+name = "bed-flash"
+text = "BED!!!!!"
+background = "black"
+font = "small"
+baseline = 20
+color = "ff0000"
+x = 8
+seconds = 1
+priority = 10 # lower than a message: it does not interrupt a message
+clear = "kept"
+
+# The bedtime warning on bedtime nights. Each rule starts its alert each
+# `every` seconds, from `from` to before `to`.
+
+[[trigger]]
+alert = "bed-flash"
+days = ["sun", "mon", "tue", "wed", "thu"]
+from = "23:00"
+to = "23:05"
+every = 10
+
+[[trigger]]
+alert = "bedtime"
+days = ["sun", "mon", "tue", "wed", "thu"]
+from = "23:05"
+to = "23:16"
+every = 10

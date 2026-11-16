@@ -45,7 +45,7 @@ line and then close the connection. A reply starts with `ok` or with
 
 #### Scenario: Unknown command
 - **WHEN** a client sends `frobnicate`
-- **THEN** the reply is `error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, and alert.`
+- **THEN** the reply is `error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, and reload.`
 
 #### Scenario: Line too long
 - **WHEN** a client sends 300 bytes with no line feed

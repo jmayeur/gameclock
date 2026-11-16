@@ -1,6 +1,9 @@
 //! Alerts: the definition, the built-in table, and the alert scene
 //! (`openspec/specs/alerts`, docs/adr/0018).
 
+use core::fmt;
+use std::rc::Rc;
+
 use embedded_graphics::mono_font::ascii::{FONT_7X13_BOLD, FONT_10X20};
 use embedded_graphics::mono_font::{MonoFont, MonoTextStyle};
 use embedded_graphics::pixelcolor::Rgb888;
@@ -100,15 +103,16 @@ pub enum ClearRule {
 }
 
 /// The definition of an alert. Each alert is data of this type, not code
-/// (docs/adr/0018).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// (docs/adr/0018). The built-in table or the config file gives the values
+/// (docs/adr/0019).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Alert {
     /// The name in the `alert` command.
-    pub name: &'static str,
+    pub name: String,
     /// What the alert draws below its text.
     pub background: Background,
     /// The text.
-    pub text: &'static str,
+    pub text: String,
     /// The style of the text.
     pub style: TextStyle,
     /// The longest time that the alert shows.
@@ -119,62 +123,217 @@ pub struct Alert {
     pub clear: ClearRule,
 }
 
-/// The built-in alerts.
-pub const BUILT_IN: &[Alert] = &[
-    Alert {
-        name: "panic",
-        background: Background::ColorWheel,
-        text: "PANIC!!",
-        style: TextStyle {
-            font: Font::Small,
-            baseline: 20,
-            color: TextColor::Contrast,
-            motion: Motion::Still { x: 9 },
-        },
-        duration: SignedDuration::from_secs(20),
-        priority: Priority(40),
-        clear: ClearRule::Removable,
-    },
-    Alert {
-        name: "bedtime",
-        background: Background::Black,
-        text: "GAME OVER - TURN IT OFF!",
-        style: TextStyle {
-            font: Font::Large,
-            baseline: 25,
-            color: TextColor::Fixed(Rgb888::new(50, 205, 50)),
-            motion: Motion::Scroll { passes: 2 },
-        },
-        duration: SignedDuration::from_secs(20),
-        priority: Priority(30),
-        clear: ClearRule::Kept,
-    },
-    Alert {
-        name: "bed-flash",
-        background: Background::Black,
-        text: "BED!!!!!",
-        style: TextStyle {
-            font: Font::Small,
-            baseline: 20,
-            color: TextColor::Fixed(Rgb888::new(255, 0, 0)),
-            motion: Motion::Still { x: 8 },
-        },
-        duration: SignedDuration::from_secs(1),
-        priority: Priority(10),
-        clear: ClearRule::Kept,
-    },
-];
+/// The most characters in an alert name.
+const MAX_NAME: usize = 32;
+/// The most characters in an alert text.
+const MAX_TEXT: usize = 64;
+/// The most passes of a scrolling text.
+const MAX_PASSES: u8 = 10;
+/// The longest alert, in seconds.
+const MAX_SECONDS: i64 = 3600;
 
-/// The built-in alert with the name `name`.
-#[must_use]
-pub fn find(name: &str) -> Option<&'static Alert> {
-    BUILT_IN.iter().find(|a| a.name == name)
+/// An alert value that is not valid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AlertError {
+    /// The name is empty, too long, or has a character that is not `a`–`z`,
+    /// `0`–`9`, or `-`.
+    Name,
+    /// The name is `stop`, which the `alert stop` command uses.
+    Stop,
+    /// Two alerts have this name.
+    Duplicate(String),
+    /// The text is empty, has only spaces, or is too long.
+    Text,
+    /// The pass count is not from 1 to 10.
+    Passes,
+    /// The duration is not from 1 s to 1 h.
+    Duration,
+}
+
+impl fmt::Display for AlertError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Name => write!(
+                f,
+                "the alert name must have 1 to {MAX_NAME} characters of a to z, 0 to 9, and -."
+            ),
+            Self::Stop => f.write_str(
+                "the alert name 'stop' is not permitted, because the command 'alert stop' uses it.",
+            ),
+            Self::Duplicate(name) => write!(f, "two alerts have the name '{name}'."),
+            Self::Text => write!(f, "the alert text must have 1 to {MAX_TEXT} characters."),
+            Self::Passes => write!(f, "the pass count must be from 1 to {MAX_PASSES}."),
+            Self::Duration => write!(f, "the duration must be from 1 to {MAX_SECONDS} seconds."),
+        }
+    }
+}
+
+impl std::error::Error for AlertError {}
+
+impl Alert {
+    /// Check the name, the text, the pass count, and the duration.
+    ///
+    /// # Errors
+    /// The first [`AlertError`] that applies.
+    pub fn validate(&self) -> Result<(), AlertError> {
+        let name_ok = !self.name.is_empty()
+            && self.name.chars().count() <= MAX_NAME
+            && self
+                .name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if !name_ok {
+            return Err(AlertError::Name);
+        }
+        if self.name == "stop" {
+            return Err(AlertError::Stop);
+        }
+        if self.text.trim().is_empty() || self.text.chars().count() > MAX_TEXT {
+            return Err(AlertError::Text);
+        }
+        if let Motion::Scroll { passes } = self.style.motion
+            && !(1..=MAX_PASSES).contains(&passes)
+        {
+            return Err(AlertError::Passes);
+        }
+        let seconds = SignedDuration::from_secs(1)..=SignedDuration::from_secs(MAX_SECONDS);
+        if !seconds.contains(&self.duration) {
+            return Err(AlertError::Duration);
+        }
+        Ok(())
+    }
+}
+
+/// An alert table that is not valid: the alert at `index` has `error`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlertsError {
+    /// The position of the alert in the table.
+    pub index: usize,
+    /// What is wrong.
+    pub error: AlertError,
+}
+
+/// A table of alerts with unique names (docs/adr/0019).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alerts(Vec<Rc<Alert>>);
+
+impl Alerts {
+    /// A table of `alerts`, in their order.
+    ///
+    /// # Errors
+    /// [`AlertsError`] for the first alert that is not valid, or that has
+    /// the name of an earlier alert.
+    pub fn new(alerts: Vec<Alert>) -> Result<Self, AlertsError> {
+        let mut table: Vec<Rc<Alert>> = Vec::with_capacity(alerts.len());
+        for (index, alert) in alerts.into_iter().enumerate() {
+            alert
+                .validate()
+                .map_err(|error| AlertsError { index, error })?;
+            if table.iter().any(|a| a.name == alert.name) {
+                let error = AlertError::Duplicate(alert.name);
+                return Err(AlertsError { index, error });
+            }
+            table.push(Rc::new(alert));
+        }
+        Ok(Self(table))
+    }
+
+    /// The built-in alerts: `panic`, `bedtime`, and `bed-flash`.
+    #[must_use]
+    pub fn legacy() -> Self {
+        Self(legacy_alerts().into_iter().map(Rc::new).collect())
+    }
+
+    /// The alert with the name `name`.
+    #[must_use]
+    pub fn find(&self, name: &str) -> Option<Rc<Alert>> {
+        self.0.iter().find(|a| a.name == name).cloned()
+    }
+
+    /// The alerts, in the order of the table.
+    pub fn iter(&self) -> impl Iterator<Item = &Rc<Alert>> {
+        self.0.iter()
+    }
+
+    /// The names as a list for a reply, for example `a, b, and c`.
+    #[must_use]
+    pub fn names(&self) -> Names<'_> {
+        Names(&self.0)
+    }
+}
+
+/// The names of an alert table as a list. See [`Alerts::names`].
+#[derive(Debug, Clone, Copy)]
+pub struct Names<'a>(&'a [Rc<Alert>]);
+
+impl fmt::Display for Names<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let count = self.0.len();
+        for (n, alert) in self.0.iter().enumerate() {
+            match n {
+                0 => {}
+                _ if n + 1 == count && count == 2 => f.write_str(" and ")?,
+                _ if n + 1 == count => f.write_str(", and ")?,
+                _ => f.write_str(", ")?,
+            }
+            f.write_str(&alert.name)?;
+        }
+        Ok(())
+    }
+}
+
+/// The built-in alert definitions.
+fn legacy_alerts() -> Vec<Alert> {
+    vec![
+        Alert {
+            name: "panic".to_owned(),
+            background: Background::ColorWheel,
+            text: "PANIC!!".to_owned(),
+            style: TextStyle {
+                font: Font::Small,
+                baseline: 20,
+                color: TextColor::Contrast,
+                motion: Motion::Still { x: 9 },
+            },
+            duration: SignedDuration::from_secs(20),
+            priority: Priority(40),
+            clear: ClearRule::Removable,
+        },
+        Alert {
+            name: "bedtime".to_owned(),
+            background: Background::Black,
+            text: "GAME OVER - TURN IT OFF!".to_owned(),
+            style: TextStyle {
+                font: Font::Large,
+                baseline: 25,
+                color: TextColor::Fixed(Rgb888::new(50, 205, 50)),
+                motion: Motion::Scroll { passes: 2 },
+            },
+            duration: SignedDuration::from_secs(20),
+            priority: Priority(30),
+            clear: ClearRule::Kept,
+        },
+        Alert {
+            name: "bed-flash".to_owned(),
+            background: Background::Black,
+            text: "BED!!!!!".to_owned(),
+            style: TextStyle {
+                font: Font::Small,
+                baseline: 20,
+                color: TextColor::Fixed(Rgb888::new(255, 0, 0)),
+                motion: Motion::Still { x: 8 },
+            },
+            duration: SignedDuration::from_secs(1),
+            priority: Priority(10),
+            clear: ClearRule::Kept,
+        },
+    ]
 }
 
 /// A scene that shows one alert from its start until its finish.
 #[derive(Debug, Clone)]
 pub struct AlertScene {
-    alert: &'static Alert,
+    alert: Rc<Alert>,
     start: Timestamp,
     /// The path of a scrolling text. `None` for a still text.
     path: Option<ScrollPath>,
@@ -187,7 +346,7 @@ impl AlertScene {
     /// The scene of `alert` that starts at `start` on a panel `width` pixels
     /// wide. The brightness comes from `schedule`.
     #[must_use]
-    pub fn new(alert: &'static Alert, start: Timestamp, width: usize, schedule: Schedule) -> Self {
+    pub fn new(alert: Rc<Alert>, start: Timestamp, width: usize, schedule: Schedule) -> Self {
         let path = match alert.style.motion {
             Motion::Still { .. } => None,
             Motion::Scroll { passes } => {
@@ -213,8 +372,8 @@ impl AlertScene {
 
     /// The alert of this scene.
     #[must_use]
-    pub fn alert(&self) -> &'static Alert {
-        self.alert
+    pub fn alert(&self) -> &Rc<Alert> {
+        &self.alert
     }
 
     /// The number of whole wheel steps from the start to `now`. It is 0
@@ -263,7 +422,7 @@ impl Scene for AlertScene {
         };
         let style = MonoTextStyle::new(self.alert.style.font.mono(), color);
         let text = Text::with_baseline(
-            self.alert.text,
+            &self.alert.text,
             Point::new(x, self.alert.style.baseline),
             style,
             Baseline::Alphabetic,
@@ -305,7 +464,7 @@ impl Scene for AlertScene {
 ///
 /// The fire times are `from + k × every` that are before `to`, on each day
 /// in `days`, in the local time zone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Trigger {
     /// The days of the rule.
     pub days: Weekdays,
@@ -316,15 +475,68 @@ pub struct Trigger {
     /// The time between two fire times.
     pub every: SignedDuration,
     /// The alert to start.
-    pub alert: &'static Alert,
+    pub alert: Rc<Alert>,
 }
 
+/// A trigger value that is not valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerError {
+    /// The start time is at or after the end time.
+    Window,
+    /// The period is not from 1 s to 1 h.
+    Every,
+}
+
+impl fmt::Display for TriggerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Window => f.write_str("the start time must be before the end time."),
+            Self::Every => write!(
+                f,
+                "the trigger period must be from 1 to {MAX_SECONDS} seconds."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TriggerError {}
+
 impl Trigger {
+    /// A rule that starts `alert` each `every` from `from` to before `to` on
+    /// `days`.
+    ///
+    /// # Errors
+    /// [`TriggerError`] if `from` is not before `to`, or if `every` is not
+    /// from 1 s to 1 h.
+    pub fn new(
+        days: Weekdays,
+        from: TimeOfDay,
+        to: TimeOfDay,
+        every: SignedDuration,
+        alert: Rc<Alert>,
+    ) -> Result<Self, TriggerError> {
+        if from >= to {
+            return Err(TriggerError::Window);
+        }
+        let period = SignedDuration::from_secs(1)..=SignedDuration::from_secs(MAX_SECONDS);
+        if !period.contains(&every) {
+            return Err(TriggerError::Every);
+        }
+        Ok(Self {
+            days,
+            from,
+            to,
+            every,
+            alert,
+        })
+    }
+
     /// The legacy bedtime warning: on bedtime nights (Sunday to Thursday),
     /// `bed-flash` each 10 s from 23:00 to 23:05, and `bedtime` each 10 s
-    /// from 23:05 to 23:16.
+    /// from 23:05 to 23:16. A rule whose alert is not in `alerts` is not in
+    /// the result.
     #[must_use]
-    pub fn legacy() -> Vec<Self> {
+    pub fn legacy(alerts: &Alerts) -> Vec<Self> {
         let bedtime_nights = Weekdays::of(&[
             Weekday::Sunday,
             Weekday::Monday,
@@ -340,13 +552,9 @@ impl Trigger {
         table
             .into_iter()
             .filter_map(|(name, (fh, fm), (th, tm))| {
-                Some(Self {
-                    days: bedtime_nights,
-                    from: TimeOfDay::hm(fh, fm).ok()?,
-                    to: TimeOfDay::hm(th, tm).ok()?,
-                    every,
-                    alert: find(name)?,
-                })
+                let from = TimeOfDay::hm(fh, fm).ok()?;
+                let to = TimeOfDay::hm(th, tm).ok()?;
+                Self::new(bedtime_nights, from, to, every, alerts.find(name)?).ok()
             })
             .collect()
     }
@@ -430,11 +638,11 @@ impl Triggers {
     /// The alerts of the rules whose next fire time is at or before `now`.
     /// Each of these rules then gets the first fire time after `now`. A late
     /// call so gives one alert for each rule, not one for each missed time.
-    pub fn due(&mut self, now: &Zoned) -> Vec<&'static Alert> {
+    pub fn due(&mut self, now: &Zoned) -> Vec<Rc<Alert>> {
         let mut alerts = Vec::new();
         for (rule, next) in &mut self.rules {
             if next.is_some_and(|t| t <= now.timestamp()) {
-                alerts.push(rule.alert);
+                alerts.push(Rc::clone(&rule.alert));
                 *next = rule.first_after(now);
             }
         }
@@ -465,7 +673,12 @@ mod tests {
     }
 
     fn scene(name: &str) -> AlertScene {
-        AlertScene::new(find(name).unwrap(), start(), 64, Schedule::legacy())
+        AlertScene::new(
+            Alerts::legacy().find(name).unwrap(),
+            start(),
+            64,
+            Schedule::legacy(),
+        )
     }
 
     fn render(scene: &mut AlertScene, now: &Zoned) -> Frame {
@@ -626,12 +839,12 @@ mod tests {
 
     #[test]
     fn two_definitions_with_the_same_parts_give_the_same_frames() {
-        static COPY: Alert = Alert {
-            name: "copy",
-            ..BUILT_IN[2]
+        let flash = Alerts::legacy().find("bed-flash").unwrap();
+        let copy = Alert {
+            name: "copy".to_owned(),
+            ..(*flash).clone()
         };
-        assert_eq!(BUILT_IN[2].name, "bed-flash");
-        let mut copy = AlertScene::new(&COPY, start(), 64, Schedule::legacy());
+        let mut copy = AlertScene::new(Rc::new(copy), start(), 64, Schedule::legacy());
         let mut flash = scene("bed-flash");
         for ms in [0, 400, 999] {
             assert_eq!(
@@ -644,11 +857,12 @@ mod tests {
 
     #[test]
     fn find_each_built_in_alert() {
+        let table = Alerts::legacy();
         for name in ["panic", "bedtime", "bed-flash"] {
-            assert_eq!(find(name).map(|a| a.name), Some(name));
+            assert_eq!(table.find(name).map(|a| a.name.clone()), Some(name.into()));
         }
-        assert_eq!(find("fire"), None);
-        assert_eq!(BUILT_IN.len(), 3);
+        assert_eq!(table.find("fire"), None);
+        assert_eq!(table.iter().count(), 3);
     }
 
     // An alert uses the brightness of the clock schedule.
@@ -683,11 +897,11 @@ mod tests {
     }
 
     fn triggers_at(s: &str) -> Triggers {
-        Triggers::new(Trigger::legacy(), &utc(s))
+        Triggers::new(Trigger::legacy(&Alerts::legacy()), &utc(s))
     }
 
-    fn names(alerts: &[&'static Alert]) -> Vec<&'static str> {
-        alerts.iter().map(|a| a.name).collect()
+    fn names(alerts: &[Rc<Alert>]) -> Vec<String> {
+        alerts.iter().map(|a| a.name.clone()).collect()
     }
 
     // 2026-11-16 is a Monday. 2026-11-20 is a Friday.
@@ -755,6 +969,190 @@ mod tests {
         assert_eq!(
             triggers_at("2026-11-16T12:00:05Z").next(),
             Some(utc_ts("2026-11-16T23:00:00Z"))
+        );
+    }
+
+    // Owned alerts and their limits (`openspec/specs/daemon-config`).
+
+    fn good(name: &str) -> Alert {
+        Alert {
+            name: name.to_owned(),
+            background: Background::Black,
+            text: "DINNER".to_owned(),
+            style: TextStyle {
+                font: Font::Small,
+                baseline: 20,
+                color: TextColor::Fixed(Rgb888::new(255, 255, 0)),
+                motion: Motion::Still { x: 11 },
+            },
+            duration: SignedDuration::from_secs(5),
+            priority: Priority(25),
+            clear: ClearRule::Removable,
+        }
+    }
+
+    #[test]
+    fn a_good_alert_is_valid() {
+        assert_eq!(good("dinner").validate(), Ok(()));
+        assert_eq!(good("a-1").validate(), Ok(()));
+    }
+
+    #[test]
+    fn alert_name_limits() {
+        for name in ["", "Dinner", "din ner", "dinner!", &"a".repeat(33)] {
+            assert_eq!(good(name).validate(), Err(AlertError::Name), "{name:?}");
+        }
+        assert!(good(&"a".repeat(32)).validate().is_ok());
+        assert_eq!(good("stop").validate(), Err(AlertError::Stop));
+    }
+
+    #[test]
+    fn alert_text_limits() {
+        for text in [String::new(), "   ".to_owned(), "a".repeat(65)] {
+            let a = Alert {
+                text,
+                ..good("dinner")
+            };
+            assert_eq!(a.validate(), Err(AlertError::Text));
+        }
+        let a = Alert {
+            text: "é".repeat(64),
+            ..good("dinner")
+        };
+        assert_eq!(a.validate(), Ok(()));
+    }
+
+    #[test]
+    fn alert_pass_limits() {
+        for passes in [0, 11] {
+            let mut a = good("dinner");
+            a.style.motion = Motion::Scroll { passes };
+            assert_eq!(a.validate(), Err(AlertError::Passes), "{passes}");
+        }
+    }
+
+    #[test]
+    fn alert_duration_limits() {
+        for secs in [0, 3601] {
+            let a = Alert {
+                duration: SignedDuration::from_secs(secs),
+                ..good("dinner")
+            };
+            assert_eq!(a.validate(), Err(AlertError::Duration), "{secs}");
+        }
+        let a = Alert {
+            duration: SignedDuration::from_secs(3600),
+            ..good("dinner")
+        };
+        assert_eq!(a.validate(), Ok(()));
+    }
+
+    #[test]
+    fn alert_errors_have_messages() {
+        assert_eq!(
+            AlertError::Name.to_string(),
+            "the alert name must have 1 to 32 characters of a to z, 0 to 9, and -."
+        );
+        assert_eq!(
+            AlertError::Stop.to_string(),
+            "the alert name 'stop' is not permitted, because the command 'alert stop' uses it."
+        );
+        assert_eq!(
+            AlertError::Duplicate("a".into()).to_string(),
+            "two alerts have the name 'a'."
+        );
+        assert_eq!(
+            AlertError::Text.to_string(),
+            "the alert text must have 1 to 64 characters."
+        );
+        assert_eq!(
+            AlertError::Passes.to_string(),
+            "the pass count must be from 1 to 10."
+        );
+        assert_eq!(
+            AlertError::Duration.to_string(),
+            "the duration must be from 1 to 3600 seconds."
+        );
+    }
+
+    #[test]
+    fn a_table_has_unique_names() {
+        let err = Alerts::new(vec![good("a"), good("b"), good("a")]).unwrap_err();
+        assert_eq!(err.index, 2);
+        assert_eq!(err.error, AlertError::Duplicate("a".into()));
+        let err = Alerts::new(vec![good("a"), good("stop")]).unwrap_err();
+        assert_eq!((err.index, err.error), (1, AlertError::Stop));
+    }
+
+    #[test]
+    fn find_in_a_table() {
+        let table = Alerts::new(vec![good("dinner")]).unwrap();
+        assert_eq!(
+            table.find("dinner").map(|a| a.name.clone()),
+            Some("dinner".into())
+        );
+        assert!(table.find("panic").is_none());
+        let legacy = Alerts::legacy();
+        for name in ["panic", "bedtime", "bed-flash"] {
+            assert_eq!(legacy.find(name).map(|a| a.name.clone()), Some(name.into()));
+        }
+    }
+
+    #[test]
+    fn names_of_a_table() {
+        assert_eq!(
+            Alerts::legacy().names().to_string(),
+            "panic, bedtime, and bed-flash"
+        );
+        let two = Alerts::new(vec![good("a"), good("b")]).unwrap();
+        assert_eq!(two.names().to_string(), "a and b");
+        let one = Alerts::new(vec![good("dinner")]).unwrap();
+        assert_eq!(one.names().to_string(), "dinner");
+    }
+
+    // Trigger limits (`openspec/specs/daemon-config`).
+
+    fn hm(h: u8, m: u8) -> TimeOfDay {
+        TimeOfDay::hm(h, m).unwrap()
+    }
+
+    fn panic_rc() -> Rc<Alert> {
+        Alerts::legacy().find("panic").unwrap()
+    }
+
+    #[test]
+    fn a_good_trigger() {
+        let every = SignedDuration::from_secs(30);
+        let t = Trigger::new(Weekdays::EACH_DAY, hm(7, 0), hm(7, 1), every, panic_rc()).unwrap();
+        assert_eq!(t.from, hm(7, 0));
+        let hour = SignedDuration::from_secs(3600);
+        assert!(Trigger::new(Weekdays::EACH_DAY, hm(0, 0), hm(24, 0), hour, panic_rc()).is_ok());
+    }
+
+    #[test]
+    fn trigger_window_must_be_in_order() {
+        let every = SignedDuration::from_secs(10);
+        for (from, to) in [(hm(7, 0), hm(7, 0)), (hm(8, 0), hm(7, 0))] {
+            let err = Trigger::new(Weekdays::EACH_DAY, from, to, every, panic_rc()).unwrap_err();
+            assert_eq!(err, TriggerError::Window);
+        }
+        assert_eq!(
+            TriggerError::Window.to_string(),
+            "the start time must be before the end time."
+        );
+    }
+
+    #[test]
+    fn trigger_period_limits() {
+        for secs in [0, 3601] {
+            let every = SignedDuration::from_secs(secs);
+            let err = Trigger::new(Weekdays::EACH_DAY, hm(7, 0), hm(8, 0), every, panic_rc())
+                .unwrap_err();
+            assert_eq!(err, TriggerError::Every, "{secs}");
+        }
+        assert_eq!(
+            TriggerError::Every.to_string(),
+            "the trigger period must be from 1 to 3600 seconds."
         );
     }
 }

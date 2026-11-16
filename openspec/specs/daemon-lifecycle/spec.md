@@ -139,8 +139,8 @@ both the hzeller driver and the simulator SHALL fail.
 - **THEN** the build fails with a message that says the two features cannot be used together
 
 ### Requirement: Command-line arguments
-The daemon SHALL accept hzeller `--led-*` flags, `--test-pattern`, and
-`--control-socket=<path>` as arguments. It SHALL give the `--led-*` flags to
+The daemon SHALL accept hzeller `--led-*` flags, `--test-pattern`,
+`--control-socket=<path>`, and `--config=<path>` as arguments. It SHALL give the `--led-*` flags to
 the driver in their order, without the other arguments. Any other argument
 SHALL cause a usage error and exit status 2, before the daemon touches the
 panel. A build without the hzeller driver SHALL accept and ignore `--led-*`

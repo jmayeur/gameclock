@@ -41,12 +41,16 @@ and scope can change. Update this file when a change merges or a plan changes.
    board applies the priorities. An interrupted message restarts. Timed
    triggers start the bedtime warning (ADR-0018).
 
+## Configuration
+
+8. **`configurable-schedule`**: **done**. A TOML config file has the
+   schedule, the alert definitions, and the trigger rules. Each section is
+   optional, and a missing section uses its built-in table. `reload` reads
+   the file again. A file with an error stops the start (ADR-0019,
+   `docs/config.md`). This replaces the abandoned legacy admin page.
+
 ## Later candidates
 
-- **`configurable-schedule`**: brightness, color, and bedtime rules from
-  config, by weekday. This replaces the abandoned legacy admin page. The
-  alert definitions and the trigger rules also move to the config file. They
-  are built-in tables now (ADR-0018).
 - **`web-control`**: HTTP in the daemon replaces the Node 10 server. This
   saves RAM and removes Node from the Pi.
 - Priorities, layers, and overlays, for example a clock with a message ticker.

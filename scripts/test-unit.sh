@@ -17,6 +17,8 @@ fi
 
 has "Conflicts=clock.svc.service"
 has "Restart=on-failure"
+# A usage or config error exits 2. systemd must not restart it (ADR-0019).
+has "RestartPreventExitStatus=2"
 has "EnvironmentFile=-/etc/default/gameclockd"
 # 8 PWM bits first. A later flag from GAMECLOCKD_ARGS wins (ADR-0015).
 has "ExecStart=/usr/local/bin/gameclockd --led-pwm-bits=8 \$GAMECLOCKD_ARGS"

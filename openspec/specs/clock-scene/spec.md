@@ -104,9 +104,9 @@ matches, the default style SHALL apply.
 - **THEN** the rule is rejected
 
 ### Requirement: The legacy schedule is the default
-The daemon's clock SHALL use the legacy schedule. It SHALL give these styles
-for the local time. Mellow is the color (255,140,0). Bedtime nights are
-Sunday to Thursday.
+With no `[schedule]` section in the config, the clock SHALL give the styles of
+the legacy schedule for the local time. Mellow is (255,140,0). Bedtime nights
+are Sunday to Thursday.
 
 | Local time | Color | Brightness |
 |---|---|---|
@@ -129,6 +129,10 @@ Sunday to Thursday.
 #### Scenario: Weekday of the local date
 - **WHEN** the legacy clock is rendered at 2026-11-14T07:05:00Z in the time zone America/Los_Angeles, which is Friday 23:05 local time
 - **THEN** the brightness is 25
+
+#### Scenario: A schedule section replaces the legacy schedule
+- **WHEN** the config has a `[schedule]` section with the default style blue `0000ff` at 60 and no rules
+- **THEN** the clock at 23:05 on a Monday is `(0,0,255)` at brightness 60
 
 ### Requirement: Clock updates do not allocate heap memory
 After the first update, a compositor with the clock as its base scene SHALL
