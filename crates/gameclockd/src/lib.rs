@@ -2,6 +2,7 @@
 //! hardware or signals (`openspec/specs/daemon-lifecycle`).
 
 use core::fmt;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -12,8 +13,12 @@ pub mod sim;
 pub mod command;
 pub mod config;
 pub mod control;
+pub mod http;
+pub mod web;
 
-use command::{Command, OK, no_alert_name_reply, status_reply, unknown_alert_reply};
+use command::{
+    Command, OK, alert_names_reply, no_alert_name_reply, status_reply, unknown_alert_reply,
+};
 use config::{ConfigError, Origin};
 
 use gameclock_core::alert::Triggers;
@@ -281,6 +286,7 @@ pub fn run<P: Panel>(
                         }
                         Err(e) => format!("error: {e}"),
                     },
+                    Command::AlertNames => alert_names_reply(&alerts),
                     Command::StopAlert => {
                         board.stop_alert(&now, &mut compositor);
                         present(panel, &mut compositor, &now)?;
@@ -312,12 +318,14 @@ fn present<P: Panel>(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageError {
     /// An argument that is not a `--led-*` driver flag, `--test-pattern`,
-    /// `--control-socket=<path>`, or `--config=<path>`.
+    /// `--control-socket=<path>`, `--config=<path>`, or `--http=<address>`.
     Unknown(String),
     /// `--control-socket=` with no path.
     EmptySocketPath,
     /// `--config=` with no path.
     EmptyConfigPath,
+    /// A `--http=` value that is not an address with a port, and not `off`.
+    BadHttp(String),
     /// `ctl` with no command.
     Ctl,
 }
@@ -327,7 +335,7 @@ impl fmt::Display for UsageError {
         match self {
             Self::Unknown(arg) => write!(
                 f,
-                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, and --config=<path>."
+                "unknown argument '{arg}'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, --config=<path>, and --http=<address>."
             ),
             Self::EmptySocketPath => write!(
                 f,
@@ -336,6 +344,10 @@ impl fmt::Display for UsageError {
             Self::EmptyConfigPath => write!(
                 f,
                 "--config needs a path, for example --config={DEFAULT_CONFIG}."
+            ),
+            Self::BadHttp(value) => write!(
+                f,
+                "--http needs an address and a port, or off. '{value}' is not correct. For example, --http={DEFAULT_HTTP}."
             ),
             Self::Ctl => {
                 f.write_str("usage: gameclockd ctl [--control-socket=<path>] <command> [<word>...]")
@@ -400,6 +412,9 @@ pub struct Args {
     pub config: PathBuf,
     /// Where the config path came from.
     pub config_origin: Origin,
+    /// The address of the web page, or `None` for no web page
+    /// (docs/adr/0020).
+    pub http: Option<SocketAddr>,
 }
 
 /// The checked command line of `gameclockd ctl`.
@@ -428,6 +443,16 @@ const CONTROL_SOCKET: &str = "--control-socket=";
 
 /// The default path of the config file (docs/adr/0019).
 pub const DEFAULT_CONFIG: &str = "/etc/gameclockd/config.toml";
+
+/// The default address of the web page (docs/adr/0020).
+pub const DEFAULT_HTTP: &str = "0.0.0.0:80";
+
+/// [`DEFAULT_HTTP`] as an address.
+const DEFAULT_HTTP_ADDRESS: SocketAddr =
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80));
+
+/// The argument that gives the web address.
+const HTTP: &str = "--http=";
 
 /// The argument that changes the path of the config file.
 const CONFIG: &str = "--config=";
@@ -467,6 +492,7 @@ where
         socket: PathBuf::from(DEFAULT_SOCKET),
         config: PathBuf::from(DEFAULT_CONFIG),
         config_origin: Origin::Default,
+        http: Some(DEFAULT_HTTP_ADDRESS),
     };
     for arg in args {
         if arg == TEST_PATTERN {
@@ -479,6 +505,15 @@ where
             }
             parsed.config = PathBuf::from(path);
             parsed.config_origin = Origin::Argument;
+        } else if let Some(value) = arg.strip_prefix(HTTP) {
+            parsed.http = match value {
+                "off" => None,
+                address => Some(
+                    address
+                        .parse()
+                        .map_err(|_| UsageError::BadHttp(address.to_owned()))?,
+                ),
+            };
         } else if arg.starts_with("--led-") {
             parsed.driver.push(arg);
         } else {
@@ -785,6 +820,7 @@ mod tests {
             socket: PathBuf::from(DEFAULT_SOCKET),
             config: PathBuf::from(DEFAULT_CONFIG),
             config_origin: Origin::Default,
+            http: Some(DEFAULT_HTTP_ADDRESS),
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -797,6 +833,7 @@ mod tests {
             socket: PathBuf::from(DEFAULT_SOCKET),
             config: PathBuf::from(DEFAULT_CONFIG),
             config_origin: Origin::Default,
+            http: Some(DEFAULT_HTTP_ADDRESS),
         };
         assert_eq!(parse_args(Vec::new()), Ok(Invocation::Daemon(expected)));
     }
@@ -814,6 +851,7 @@ mod tests {
             socket: PathBuf::from(DEFAULT_SOCKET),
             config: PathBuf::from(DEFAULT_CONFIG),
             config_origin: Origin::Default,
+            http: Some(DEFAULT_HTTP_ADDRESS),
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -827,6 +865,7 @@ mod tests {
             socket: PathBuf::from("/tmp/a.sock"),
             config: PathBuf::from(DEFAULT_CONFIG),
             config_origin: Origin::Default,
+            http: Some(DEFAULT_HTTP_ADDRESS),
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -850,6 +889,7 @@ mod tests {
             socket: PathBuf::from(DEFAULT_SOCKET),
             config: PathBuf::from("/tmp/gc.toml"),
             config_origin: Origin::Argument,
+            http: Some(DEFAULT_HTTP_ADDRESS),
         };
         assert_eq!(parse_args(given), Ok(Invocation::Daemon(expected)));
     }
@@ -859,6 +899,51 @@ mod tests {
         let err = parse_args(args(&["--config="])).unwrap_err();
         assert_eq!(err, UsageError::EmptyConfigPath);
         assert!(err.to_string().contains("--config"), "{err}");
+    }
+
+    // The web address (`openspec/specs/daemon-lifecycle`).
+
+    fn daemon_args(given: &[&str]) -> Args {
+        match parse_args(args(given)) {
+            Ok(Invocation::Daemon(parsed)) => parsed,
+            other => panic!("not a daemon invocation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn default_web_address() {
+        assert_eq!(DEFAULT_HTTP, "0.0.0.0:80");
+        assert_eq!(daemon_args(&[]).http, Some("0.0.0.0:80".parse().unwrap()));
+    }
+
+    #[test]
+    fn web_address_is_not_a_driver_flag() {
+        let parsed = daemon_args(&["--http=127.0.0.1:8080", "--led-pwm-bits=8"]);
+        assert_eq!(parsed.http, Some("127.0.0.1:8080".parse().unwrap()));
+        assert_eq!(parsed.driver, args(&["--led-pwm-bits=8"]));
+        let v6 = daemon_args(&["--http=[::1]:8080"]);
+        assert_eq!(v6.http, Some("[::1]:8080".parse().unwrap()));
+    }
+
+    #[test]
+    fn web_listener_off() {
+        assert_eq!(daemon_args(&["--http=off"]).http, None);
+    }
+
+    #[test]
+    fn bad_web_address_is_a_usage_error() {
+        for bad in [
+            "--http=",
+            "--http=clock:eighty",
+            "--http=0.0.0.0",
+            "--http=OFF",
+        ] {
+            let err = parse_args(args(&[bad])).unwrap_err();
+            assert_eq!(err, UsageError::BadHttp(bad["--http=".len()..].to_owned()));
+            let text = err.to_string();
+            assert!(text.contains("--http"), "{text}");
+            assert!(text.contains("--http=0.0.0.0:80"), "{text}");
+        }
     }
 
     #[test]
@@ -1636,6 +1721,38 @@ mod tests {
         );
     }
 
+    // The alert names for the web page (`openspec/specs/web-control`).
+
+    #[test]
+    fn alert_names_in_the_loop() {
+        let (step, reply) = command_at(T1, Command::AlertNames);
+        run_clock(vec![step]);
+        assert_eq!(reply.try_recv().unwrap(), "ok panic bedtime bed-flash");
+    }
+
+    #[test]
+    fn alert_names_after_a_reload() {
+        let dinner = Alert {
+            name: "dinner".to_owned(),
+            ..(*Alerts::legacy().find("bed-flash").unwrap()).clone()
+        };
+        let only_dinner = Tables {
+            alerts: Alerts::new(vec![dinner]).unwrap(),
+            triggers: Vec::new(),
+            ..Tables::legacy()
+        };
+        let (reload, _r1) = command_at(T1, Command::Reload);
+        let (names, r2) = command_at(after_t1(100), Command::AlertNames);
+        run_reloads(
+            START,
+            legacy_clock(),
+            Mode::Clock,
+            vec![Ok(only_dinner)],
+            vec![reload, names],
+        );
+        assert_eq!(r2.try_recv().unwrap(), "ok dinner");
+    }
+
     // Alerts and timed triggers (`openspec/specs/alerts`).
 
     fn alert(name: &str) -> Command {
@@ -1868,7 +1985,7 @@ mod tests {
         );
         assert_eq!(
             UsageError::Unknown("--frobnicate".into()).to_string(),
-            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, and --config=<path>."
+            "unknown argument '--frobnicate'. gameclockd accepts only --led-* driver flags, --test-pattern, --control-socket=<path>, --config=<path>, and --http=<address>."
         );
     }
 

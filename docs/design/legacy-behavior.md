@@ -61,6 +61,12 @@ Scrolling moves 1 px per frame, every 30–50 ms.
   `POST /message`, and `GET /health`. The form has buttons for **Time for Bed**
   and **PANIC**, plus a free-text field.
 - The Pi runs Node 10.24. Node no longer ships official builds for ARMv6.
+- On the Pi, the server is `/home/pi/nserv/server.js` on port 3000. nginx on
+  port 80 sends each request to it. PM2 starts it, and `pm2-pi.service`
+  starts PM2 at boot. Node used 42.5 MB of RSS, PM2 58.5 MB, and nginx
+  5.3 MB.
+- With the legacy clock on the core, `node -e 0` takes 55 s. A start of PM2
+  and the server takes about 5 minutes.
 
 ## Abandoned or partial features
 

@@ -3,7 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-11-10
 - **Related:** ADR-0006, ADR-0010, ADR-0013. Changes the deadline wait of
-  ADR-0013. OpenSpec change `command-input`.
+  ADR-0013. OpenSpec change `command-input`. ADR-0020 adds a web thread that
+  uses the same event channel.
 
 ## Context
 

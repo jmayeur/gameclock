@@ -42,6 +42,8 @@ linked into the binary, so the Pi's own 2023 copy is not used (ADR-0009).
 - The clock runs on Python 2.7 (`/usr/bin/python`). Its driver is linked
   into `/usr/local/lib/python2.7/dist-packages/rgbmatrix/core.so`. Python
   3.7.3 and Node 10.24.0 are also installed.
+- Port 80: nginx holds it for the legacy Node page. `gameclockd` binds it
+  when the deploy stops nginx and PM2 (ADR-0020).
 - `samplebase.py` sets `--led-scan-mode=1` (interlaced) by default, and the
   clock changes brightness by time of day.
 

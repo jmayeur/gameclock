@@ -42,6 +42,13 @@ run() {
 }
 called() { grep -qF -- "$1" "$log" || fail "expected a call containing '$1'; calls: $(cat "$log")"; }
 not_called() { if grep -qF -- "$1" "$log"; then fail "unexpected call containing '$1'"; fi; }
+# before <a> <b>: the first call with <a> comes before the first call with <b>.
+before() {
+    a=$(grep -nF -- "$1" "$log" | head -n 1 | cut -d: -f1)
+    b=$(grep -nF -- "$2" "$log" | head -n 1 | cut -d: -f1)
+    [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ] ||
+        fail "expected '$1' before '$2'; calls: $(cat "$log")"
+}
 
 # Scenario: Deploy without a host refuses.
 unset GAMECLOCK_HOST
@@ -65,17 +72,37 @@ not_called "disable"
 called "deploy/config.toml"
 called "[ -e /etc/gameclockd/config.toml ] || sudo install -D -m 644"
 
+# Scenario: Deploy stops the legacy web stack. gameclockd then gets port 80
+# (docs/adr/0020). Boot does not change.
+called "systemctl stop nginx.service pm2-pi.service"
+before "systemctl stop nginx.service pm2-pi.service" "systemctl restart gameclockd"
+
 # --enable: also swap the boot service.
 run 0 --enable
 called "systemctl restart gameclockd"
-called "systemctl disable clock.svc.service"
 called "systemctl enable gameclockd"
+# Scenario: Enable disables the legacy web stack.
+called "systemctl disable clock.svc.service nginx.service pm2-pi.service"
+called "systemctl stop nginx.service pm2-pi.service"
+before "systemctl stop nginx.service pm2-pi.service" "systemctl restart gameclockd"
 
 # --rollback: no copy. The legacy clock runs again and is the boot service.
 run 0 --rollback
 not_called "scp"
 called "systemctl disable --now gameclockd"
-called "systemctl enable --now clock.svc.service"
+# Scenario: Rollback starts the legacy web stack, after gameclockd stops.
+# The clock and nginx start at once. PM2 needs minutes on the Pi, so it gets
+# a long start limit and starts without a wait (docs/adr/0020).
+called "systemctl enable --now clock.svc.service nginx.service"
+before "systemctl disable --now gameclockd" "systemctl enable --now clock.svc.service nginx.service"
+called "TimeoutStartSec=15min"
+called "/etc/systemd/system/pm2-pi.service.d/gameclockd-rollback.conf"
+not_called "TimeoutStopSec"
+called "systemctl enable pm2-pi.service"
+called "systemctl start --no-block pm2-pi.service"
+before "gameclockd-rollback.conf" "systemctl daemon-reload"
+before "systemctl daemon-reload" "systemctl start --no-block pm2-pi.service"
+before "systemctl disable --now gameclockd" "systemctl start --no-block pm2-pi.service"
 
 # Unknown option.
 run nonzero --frobnicate
