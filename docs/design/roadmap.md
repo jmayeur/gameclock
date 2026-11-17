@@ -57,10 +57,15 @@ and scope can change. Update this file when a change merges or a plan changes.
    The deploy stops nginx, PM2, and Node, and the Pi gets back about 106 MB
    of RSS (ADR-0020).
 
+   **Cutover, 2026-11-16:** `gameclockd` is the boot service on the Pi. The
+   legacy Python clock, nginx, PM2, and Node are deprecated. They are
+   disabled at boot, and their files stay on the Pi for `--rollback`.
+
 ## Later candidates
 
-- Remove nginx, PM2, and Node from the Pi after some weeks of use. The
-  rollback needs them until then.
+- Remove the deprecated legacy stack from the Pi after some weeks of use:
+  the Python clock, nginx, PM2, and Node. The rollback needs them until then.
+  The removal is an OpenSpec change, because it ends `--rollback`.
 - Priorities, layers, and overlays, for example a clock with a message ticker.
   Transitions between scenes.
 - Data-driven scenes: calendar events (the legacy events sync), weather, and

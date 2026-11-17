@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ## [Unreleased]
 
+### Deprecated
+
+- The legacy Python clock (`clock.svc.service`), its Node page, PM2, and
+  nginx. On 2026-11-16, `scripts/deploy.sh --enable` made `gameclockd` the
+  boot service on the Pi. The legacy services are disabled at boot. Their
+  files stay on the Pi for `--rollback`.
+
 ### Added
 
 - Web page (OpenSpec `web-control`, ADR-0020):

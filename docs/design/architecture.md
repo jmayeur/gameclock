@@ -261,6 +261,10 @@ The deploy stops the legacy nginx and PM2, which hold port 80 and run the
 legacy Node page. The rollback starts them again. PM2 needs about 5 minutes
 on the Pi, so the rollback starts it with no wait (ADR-0020).
 
+Since 2026-11-16, `gameclockd` is the boot service on the Pi. The legacy
+clock, nginx, and PM2 are deprecated and disabled at boot. Their files stay
+on the Pi for the rollback.
+
 ## Data flow
 
 1. The loop wakes at a deadline: the next visual change or the next trigger
