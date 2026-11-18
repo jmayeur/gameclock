@@ -39,3 +39,4 @@ zero-padded) and add it to the index below.
 | [0018](0018-alerts-are-data-with-priorities-and-triggers.md) | Alerts are data, with priorities and timed triggers | Accepted |
 | [0019](0019-config-file-toml-with-serde.md) | The config is a TOML file that serde reads in the daemon | Accepted |
 | [0020](0020-web-page-with-own-http-server.md) | The daemon serves the web page with its own small HTTP server | Accepted |
+| [0021](0021-page-data-from-curl-and-serde-json.md) | Page data comes from the system curl in a fetch thread, and serde_json parses it | Accepted |

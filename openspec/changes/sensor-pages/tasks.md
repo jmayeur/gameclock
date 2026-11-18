@@ -2,7 +2,7 @@
 
 ## 1. ADR
 
-- [ ] 1.1 Write ADR-0021: page data comes from the system `curl` in a `fetch` thread, and `serde_json` parses it. Record the process boundary and the deployment assumption (`curl` and the CA certificates on the Pi). Record the measured cost of each fetch. Record the license reason against a Rust TLS client (`ring` is `Apache-2.0 AND ISC`). Add ADR-0021 to the "Related" line of ADR-0016 and ADR-0020 as a small note, and to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
+- [x] 1.1 Write ADR-0021: page data comes from the system `curl` in a `fetch` thread, and `serde_json` parses it. Record the process boundary and the deployment assumption (`curl` and the CA certificates on the Pi). Record the measured cost of each fetch. Record the license reason against a Rust TLS client (`ring` is `Apache-2.0 AND ISC`). Add ADR-0021 to the "Related" line of ADR-0016 and ADR-0020 as a small note, and to the index in `docs/adr/README.md`. Verify with `scripts/lint-docs.sh`.
 
 ## 2. AQI and values in the core (`sensor-pages`)
 
