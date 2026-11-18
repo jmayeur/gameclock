@@ -20,7 +20,7 @@ use gameclockd::{
     ChannelWait, Event, Invocation, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args,
     run,
 };
-use gameclockd::{config, control, web};
+use gameclockd::{config, control, fetch, web};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -86,9 +86,15 @@ fn main() -> ExitCode {
             false
         }
     };
-    // The fetch thread receives the page jobs (docs/adr/0021).
-    let (jobs, _job_receiver) = mpsc::channel();
-    let mut fetch = ChannelFetch::new(jobs);
+    // The fetch thread gets the page data with curl (docs/adr/0021).
+    let mut fetch = match fetch::spawn(events.clone()) {
+        Ok(fetch) => fetch,
+        Err(e) => {
+            eprintln!("gameclockd: cannot start the fetch thread: {e}. The pages show no data.");
+            // With no thread, each page request writes a warning.
+            ChannelFetch::new(mpsc::channel().0)
+        }
+    };
     // Bind the web port while the process is still root, before the driver
     // drops the privileges (docs/adr/0020).
     if let Some(address) = args.http {

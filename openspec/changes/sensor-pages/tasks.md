@@ -36,8 +36,8 @@
 
 ## 7. The fetch thread (`sensor-pages`)
 
-- [ ] 7.1 Red: write `fetch` tests against a local test HTTP server on `127.0.0.1:0` in the test: a good body and "Slow server" (no response for 10 s). Write "Body too large" (300 KiB with no length), a 404, and "User-Agent". Test that the URL goes after `--`. See them fail.
-- [ ] 7.2 Green: add the `fetch` thread and `ChannelFetch` with the fixed `curl` arguments and the 256 KiB read limit (D1). Start the thread in `main.rs`. Verify that the 7.1 tests pass in the default and the `simulator` builds.
+- [x] 7.1 Red: write `fetch` tests against a local test HTTP server on `127.0.0.1:0` in the test: a good body and "Slow server" (no response for 10 s). Write "Body too large" (300 KiB with no length), a 404, and "User-Agent". Test that the URL goes after `--`. See them fail.
+- [x] 7.2 Green: add the `fetch` thread and `ChannelFetch` with the fixed `curl` arguments and the 256 KiB read limit (D1). Start the thread in `main.rs`. Verify that the 7.1 tests pass in the default and the `simulator` builds.
 
 ## 8. The web page (`web-control`)
 
