@@ -23,9 +23,9 @@
 
 ## 5. Config (`daemon-config`)
 
-- [ ] 5.1 Red: write config tests: "Pages from the file", "No pages section", "URL with a different scheme". Write "URL that starts with a dash", "URL with a space", a URL of 257 characters, and "Unknown page key". Use `example` hosts only. See them fail.
-- [ ] 5.2 Green: add `PagesSection`, `PageUrls`, and the URL rules with the line and column (D7). Run the 5.1 tests, and see them pass.
-- [ ] 5.3 Add a commented `[pages]` example with placeholder hosts to `deploy/config.toml`, and a `[pages]` section to `docs/config.md`. Verify that "The example file gives the legacy tables" passes and that the file has no real address.
+- [x] 5.1 Red: write config tests: "Pages from the file", "No pages section", "URL with a different scheme". Write "URL that starts with a dash", "URL with a space", a URL of 257 characters, and "Unknown page key". Use `example` hosts only. See them fail.
+- [x] 5.2 Green: add `PagesSection`, `PageUrls`, and the URL rules with the line and column (D7). Run the 5.1 tests, and see them pass.
+- [x] 5.3 Add a commented `[pages]` example with placeholder hosts to `deploy/config.toml`, and a `[pages]` section to `docs/config.md`. Verify that "The example file gives the legacy tables" passes and that the file has no real address.
 
 ## 6. Commands and the loop (`sensor-pages`, `command-input`)
 
