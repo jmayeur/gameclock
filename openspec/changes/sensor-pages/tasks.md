@@ -51,9 +51,9 @@
 ## 10. On-device verification and measurements
 
 - [x] 10.1 Build with `scripts/build-pi.sh`, and run `scripts/check-pi-binary.sh`. Record the binary size against `main` in `openspec/changes/sensor-pages/measurements.md`.
-- [ ] 10.2 Deploy with `scripts/deploy.sh`. Ask the user before the deploy. With approval, add the `[pages]` section with the real URLs to `/etc/gameclockd/config.toml` on the Pi, and run `sudo gameclockd ctl reload`. Verify that `curl` runs as the `daemon` user and fetches each page.
-- [ ] 10.3 Run "Refresh rate during a fetch": `scripts/measure.sh` with no requests, and then with a `page weather` request each 5 s. Record both refresh rates and the CPU. If the rate falls by more than 10%, add `nice` (design risk 1), and measure again.
-- [ ] 10.4 Run "Memory after requests": record the RSS before and after 10 page requests.
+- [x] 10.2 Deploy with `scripts/deploy.sh`. Ask the user before the deploy. With approval, add the `[pages]` section with the real URLs to `/etc/gameclockd/config.toml` on the Pi, and run `sudo gameclockd ctl reload`. Verify that `curl` runs as the `daemon` user and fetches each page.
+- [x] 10.3 Run "Refresh rate during a fetch": `scripts/measure.sh` with no requests, and then with a `page weather` request each 5 s. Record both refresh rates and the CPU. If the rate falls by more than 10%, add `nice` (design risk 1), and measure again.
+- [x] 10.4 Run "Memory after requests": record the RSS before and after 10 page requests.
 - [ ] 10.5 Ask the user to press each page button on a phone and to verify the panel. Record the result.
 
 ## 11. Docs and final verification
