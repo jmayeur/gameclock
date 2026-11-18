@@ -21,7 +21,7 @@ use command::{
 };
 use config::{ConfigError, Origin};
 
-use gameclock_core::alert::Triggers;
+use gameclock_core::alert::{Alerts, Triggers};
 use gameclock_core::board::Board;
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
@@ -191,30 +191,35 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 pub fn run<P: Panel>(
     panel: &mut P,
     base: Box<dyn Scene>,
-    mut mode: Mode,
+    mode: Mode,
     tables: Tables,
     mut reload: impl FnMut() -> Result<Tables, ConfigError>,
     clock: &impl Clock,
     wait: &mut impl Wait,
 ) -> Result<(), RunError<P::Error>> {
     let (width, height) = panel.dimensions();
-    let mut compositor = Compositor::new(base, width, height);
     let Tables {
-        mut schedule,
-        mut alerts,
+        schedule,
+        alerts,
         triggers,
     } = tables;
-    let mut board = Board::new(width, schedule.clone());
-    let mut triggers = Triggers::new(triggers, &clock.now());
+    let mut state = State {
+        compositor: Compositor::new(base, width, height),
+        board: Board::new(width, schedule.clone()),
+        triggers: Triggers::new(triggers, &clock.now()),
+        mode,
+        schedule,
+        alerts,
+    };
     loop {
         let now = clock.now();
-        board.advance(&now, &mut compositor);
-        for alert in triggers.due(&now) {
+        state.board.advance(&now, &mut state.compositor);
+        for alert in state.triggers.due(&now) {
             // A refused trigger changes nothing (docs/adr/0018).
-            let _ = board.alert(alert, &now, &mut compositor);
+            let _ = state.board.alert(alert, &now, &mut state.compositor);
         }
-        present(panel, &mut compositor, &now)?;
-        let deadline = match (compositor.deadline(&now), triggers.next()) {
+        present(panel, &mut state.compositor, &now)?;
+        let deadline = match (state.compositor.deadline(&now), state.triggers.next()) {
             (Some(scene), Some(trigger)) => Some(scene.min(trigger)),
             (scene, trigger) => scene.or(trigger),
         };
@@ -223,80 +228,124 @@ pub fn run<P: Panel>(
             Wake::Shutdown => return Ok(()),
             Wake::Command(Request { command, reply }) => {
                 // Each change shows on the panel before the reply.
-                let now = clock.now();
-                let text = match command {
-                    Command::Mode(next) => {
-                        if next != mode {
-                            mode = next;
-                            compositor.set_base(next.base_scene(&schedule));
-                            board.advance(&now, &mut compositor);
-                            present(panel, &mut compositor, &now)?;
-                        }
-                        OK.to_owned()
-                    }
-                    Command::Status => {
-                        let zone = now.time_zone().clone();
-                        status_reply(
-                            mode,
-                            &zone,
-                            compositor.last_brightness(),
-                            board.messages(),
-                            board.alert_name(),
-                        )
-                    }
-                    Command::Message(message) => {
-                        match board.message(message, &now, &mut compositor) {
-                            Ok(()) => {
-                                present(panel, &mut compositor, &now)?;
-                                OK.to_owned()
-                            }
-                            Err(full) => format!("error: {full}"),
-                        }
-                    }
-                    Command::Clear => {
-                        board.clear(&now, &mut compositor);
-                        present(panel, &mut compositor, &now)?;
-                        OK.to_owned()
-                    }
-                    Command::Alert(None) => no_alert_name_reply(&alerts),
-                    Command::Alert(Some(name)) => match alerts.find(&name) {
-                        Some(alert) => match board.alert(alert, &now, &mut compositor) {
-                            Ok(()) => {
-                                present(panel, &mut compositor, &now)?;
-                                OK.to_owned()
-                            }
-                            Err(refused) => format!("error: {refused}"),
-                        },
-                        None => unknown_alert_reply(&name, &alerts),
-                    },
-                    Command::Reload => match reload() {
-                        Ok(new) => {
-                            // The scene on the panel keeps its alert and its
-                            // schedule. New scenes use the new tables.
-                            schedule = new.schedule;
-                            alerts = new.alerts;
-                            triggers = Triggers::new(new.triggers, &now);
-                            board.set_schedule(schedule.clone());
-                            if mode == Mode::Clock {
-                                compositor.set_base(mode.base_scene(&schedule));
-                                board.advance(&now, &mut compositor);
-                                present(panel, &mut compositor, &now)?;
-                            }
-                            OK.to_owned()
-                        }
-                        Err(e) => format!("error: {e}"),
-                    },
-                    Command::AlertNames => alert_names_reply(&alerts),
-                    Command::StopAlert => {
-                        board.stop_alert(&now, &mut compositor);
-                        present(panel, &mut compositor, &now)?;
-                        OK.to_owned()
-                    }
-                };
+                let text = state.command(command, &clock.now(), panel, &mut reload)?;
                 // The client can be gone. That is not an error of the loop.
                 let _ = reply.send(text);
             }
         }
+    }
+}
+
+/// The state of the loop between two wakes.
+struct State {
+    compositor: Compositor,
+    board: Board,
+    triggers: Triggers,
+    mode: Mode,
+    schedule: Schedule,
+    alerts: Alerts,
+}
+
+impl State {
+    /// Do `command` at `now`, and give its reply line. Each change shows on
+    /// `panel` before the function returns.
+    fn command<P: Panel>(
+        &mut self,
+        command: Command,
+        now: &Zoned,
+        panel: &mut P,
+        reload: &mut impl FnMut() -> Result<Tables, ConfigError>,
+    ) -> Result<String, RunError<P::Error>> {
+        let text = match command {
+            Command::Mode(next) => {
+                if next != self.mode {
+                    self.mode = next;
+                    self.compositor.set_base(next.base_scene(&self.schedule));
+                    self.show(now, panel)?;
+                }
+                OK.to_owned()
+            }
+            Command::Status => status_reply(
+                self.mode,
+                now.time_zone(),
+                self.compositor.last_brightness(),
+                self.board.messages(),
+                self.board.alert_name(),
+                self.board.page_name(),
+            ),
+            Command::Message(message) => {
+                match self.board.message(message, now, &mut self.compositor) {
+                    Ok(()) => {
+                        self.show(now, panel)?;
+                        OK.to_owned()
+                    }
+                    Err(full) => format!("error: {full}"),
+                }
+            }
+            Command::Clear => {
+                self.board.clear(now, &mut self.compositor);
+                self.show(now, panel)?;
+                OK.to_owned()
+            }
+            Command::Alert(None) => no_alert_name_reply(&self.alerts),
+            Command::Alert(Some(name)) => match self.alerts.find(&name) {
+                Some(alert) => match self.board.alert(alert, now, &mut self.compositor) {
+                    Ok(()) => {
+                        self.show(now, panel)?;
+                        OK.to_owned()
+                    }
+                    Err(refused) => format!("error: {refused}"),
+                },
+                None => unknown_alert_reply(&name, &self.alerts),
+            },
+            Command::Reload => match reload() {
+                Ok(new) => {
+                    self.reload(new, now, panel)?;
+                    OK.to_owned()
+                }
+                Err(e) => format!("error: {e}"),
+            },
+            Command::AlertNames => alert_names_reply(&self.alerts),
+            Command::Page(page) => {
+                format!(
+                    "error: the page '{}' has no URL in the config.",
+                    page.name()
+                )
+            }
+            Command::PageNames => OK.to_owned(),
+            Command::StopAlert => {
+                self.board.stop_alert(now, &mut self.compositor);
+                self.show(now, panel)?;
+                OK.to_owned()
+            }
+        };
+        Ok(text)
+    }
+
+    /// Use the tables `new`. The scene on the panel keeps its alert and its
+    /// schedule. New scenes use the new tables.
+    fn reload<P: Panel>(
+        &mut self,
+        new: Tables,
+        now: &Zoned,
+        panel: &mut P,
+    ) -> Result<(), RunError<P::Error>> {
+        self.schedule = new.schedule;
+        self.alerts = new.alerts;
+        self.triggers = Triggers::new(new.triggers, now);
+        self.board.set_schedule(self.schedule.clone());
+        if self.mode == Mode::Clock {
+            self.compositor
+                .set_base(self.mode.base_scene(&self.schedule));
+            self.show(now, panel)?;
+        }
+        Ok(())
+    }
+
+    /// Advance the board, and present a changed frame.
+    fn show<P: Panel>(&mut self, now: &Zoned, panel: &mut P) -> Result<(), RunError<P::Error>> {
+        self.board.advance(now, &mut self.compositor);
+        present(panel, &mut self.compositor, now)
     }
 }
 
@@ -1248,7 +1297,7 @@ mod tests {
         let (_, _, reply) = run_command(legacy_clock(), Mode::Clock, START, Command::Status);
         assert_eq!(
             reply,
-            "ok mode=clock zone=UTC brightness=25 messages=0 alert=none"
+            "ok mode=clock zone=UTC brightness=25 messages=0 alert=none page=none"
         );
     }
 
@@ -1262,7 +1311,7 @@ mod tests {
         );
         assert_eq!(
             reply,
-            "ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none"
+            "ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none page=none"
         );
     }
 
@@ -1459,7 +1508,10 @@ mod tests {
         let (status, reply) = command_at(after_t1(100), Command::Status);
         run_clock(vec![one, two, three, status]);
         let reply = reply.try_recv().unwrap();
-        assert!(reply.ends_with(" messages=3 alert=none"), "{reply}");
+        assert!(
+            reply.ends_with(" messages=3 alert=none page=none"),
+            "{reply}"
+        );
     }
 
     #[test]
@@ -1830,7 +1882,10 @@ mod tests {
         let (status, reply) = command_at(after_t1(200), Command::Status);
         run_clock(vec![one, two, panic, status]);
         let reply = reply.try_recv().unwrap();
-        assert!(reply.ends_with(" messages=2 alert=panic"), "{reply}");
+        assert!(
+            reply.ends_with(" messages=2 alert=panic page=none"),
+            "{reply}"
+        );
     }
 
     // 2026-11-16 is a Monday.
