@@ -15,11 +15,12 @@ use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 
+use gameclockd::fetch::ChannelFetch;
 use gameclockd::{
     ChannelWait, Event, Invocation, SystemClock, THREAD_STACK, exit_status, local_zone, parse_args,
     run,
 };
-use gameclockd::{config, control, web};
+use gameclockd::{config, control, fetch, web};
 
 /// Exit status for command-line usage errors.
 const USAGE: u8 = 2;
@@ -44,12 +45,12 @@ fn main() -> ExitCode {
 
     // A bad config stops the start before the socket and the panel exist
     // (docs/adr/0019).
-    let tables = match config::load(&args.config, args.config_origin) {
+    let config = match config::load(&args.config, args.config_origin) {
         Ok(loaded) => {
-            if let Some(note) = loaded.note {
+            if let Some(note) = &loaded.note {
                 eprintln!("gameclockd: {note}");
             }
-            loaded.tables
+            loaded.into_config()
         }
         Err(e) => {
             eprintln!("gameclockd: {e}");
@@ -85,6 +86,15 @@ fn main() -> ExitCode {
             false
         }
     };
+    // The fetch thread gets the page data with curl (docs/adr/0021).
+    let mut fetch = match fetch::spawn(events.clone()) {
+        Ok(fetch) => fetch,
+        Err(e) => {
+            eprintln!("gameclockd: cannot start the fetch thread: {e}. The pages show no data.");
+            // With no thread, each page request writes a warning.
+            ChannelFetch::new(mpsc::channel().0)
+        }
+    };
     // Bind the web port while the process is still root, before the driver
     // drops the privileges (docs/adr/0020).
     if let Some(address) = args.http {
@@ -108,12 +118,13 @@ fn main() -> ExitCode {
         // next scene change (docs/adr/0016).
         run(
             &mut panel,
-            args.mode.base_scene(&tables.schedule),
+            args.mode.base_scene(&config.tables.schedule),
             args.mode,
-            tables,
-            || config::load(&args.config, args.config_origin).map(|loaded| loaded.tables),
+            config,
+            || config::load(&args.config, args.config_origin).map(config::Loaded::into_config),
             &clock,
             &mut wait,
+            &mut fetch,
         )
         // The panel drops here, before the report and the exit. The hzeller
         // driver stops its refresh thread and blanks the LEDs.

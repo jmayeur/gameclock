@@ -14,6 +14,7 @@ use gameclock_core::alert::{
     Trigger, TriggerError,
 };
 use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
+use gameclock_core::page::PageName;
 use gameclock_core::schedule::{Rule, Schedule, Style, TimeOfDay, Weekdays};
 use gameclock_core::tables::Tables;
 use jiff::SignedDuration;
@@ -60,12 +61,51 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// The tables of the config text `text`. `path` names the file in errors.
+/// The URL of each page (`openspec/specs/sensor-pages`). There are no
+/// built-in URLs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PageUrls {
+    weather: Option<String>,
+    indoor: Option<String>,
+    outdoor: Option<String>,
+}
+
+impl PageUrls {
+    /// The URL of `page`, if the config gives one.
+    #[must_use]
+    pub fn get(&self, page: PageName) -> Option<&str> {
+        match page {
+            PageName::Weather => self.weather.as_deref(),
+            PageName::Indoor => self.indoor.as_deref(),
+            PageName::Outdoor => self.outdoor.as_deref(),
+        }
+    }
+
+    /// The pages that have a URL, in the order of [`PageName::ALL`].
+    #[must_use]
+    pub fn names(&self) -> Vec<PageName> {
+        PageName::ALL
+            .into_iter()
+            .filter(|page| self.get(*page).is_some())
+            .collect()
+    }
+}
+
+/// All values of a config file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Config {
+    /// The schedule, the alerts, and the triggers.
+    pub tables: Tables,
+    /// The page URLs.
+    pub pages: PageUrls,
+}
+
+/// The values of the config text `text`. `path` names the file in errors.
 ///
 /// # Errors
 /// [`ConfigError::Parse`] for a TOML error, an unknown key, a wrong type, or
 /// a value out of its range.
-pub fn parse(path: &str, text: &str) -> Result<Tables, ConfigError> {
+pub fn parse(path: &str, text: &str) -> Result<Config, ConfigError> {
     let at = |span: Range<usize>, message: String| {
         let (line, column) = position(text, span.start);
         ConfigError::Parse {
@@ -96,10 +136,17 @@ pub fn parse(path: &str, text: &str) -> Result<Tables, ConfigError> {
             .map_err(|(span, m)| at(span, m))?,
         None => Trigger::legacy(&alerts),
     };
-    Ok(Tables {
-        schedule,
-        alerts,
-        triggers,
+    let pages = match file.pages {
+        Some(section) => section.urls().map_err(|(span, m)| at(span, m))?,
+        None => PageUrls::default(),
+    };
+    Ok(Config {
+        tables: Tables {
+            schedule,
+            alerts,
+            triggers,
+        },
+        pages,
     })
 }
 
@@ -130,6 +177,53 @@ struct File {
     schedule: Option<ScheduleSection>,
     alert: Option<Vec<AlertEntry>>,
     trigger: Option<Vec<TriggerEntry>>,
+    pages: Option<PagesSection>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PagesSection {
+    weather: Option<Value<String>>,
+    indoor: Option<Value<String>>,
+    outdoor: Option<Value<String>>,
+}
+
+impl PagesSection {
+    fn urls(self) -> Result<PageUrls, Problem> {
+        Ok(PageUrls {
+            weather: self.weather.map(url).transpose()?,
+            indoor: self.indoor.map(url).transpose()?,
+            outdoor: self.outdoor.map(url).transpose()?,
+        })
+    }
+}
+
+/// The most characters of a page URL.
+const MAX_URL: usize = 256;
+
+/// A page URL. It goes to `curl` as one argument, so it must be HTTP or
+/// HTTPS and have no space (docs/adr/0021).
+fn url(value: Value<String>) -> Result<String, Problem> {
+    let text = value.get_ref();
+    if !(text.starts_with("http://") || text.starts_with("https://")) {
+        return Err(problem(
+            &value,
+            "the page URL must start with http:// or https://.",
+        ));
+    }
+    if text.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(problem(
+            &value,
+            "the page URL has a space or a control character.",
+        ));
+    }
+    if text.chars().count() > MAX_URL {
+        return Err(problem(
+            &value,
+            "the page URL has more than 256 characters.",
+        ));
+    }
+    Ok(value.into_inner())
 }
 
 #[derive(Debug, Deserialize)]
@@ -432,14 +526,27 @@ pub enum Origin {
     Argument,
 }
 
-/// The tables of a load, and a note for the log.
+/// The values of a load, and a note for the log.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loaded {
     /// The tables.
     pub tables: Tables,
+    /// The page URLs.
+    pub pages: PageUrls,
     /// A line for standard error, without the program name, if the load
     /// used the built-in tables because no file is at the default path.
     pub note: Option<String>,
+}
+
+impl Loaded {
+    /// The values of the load, without the note.
+    #[must_use]
+    pub fn into_config(self) -> Config {
+        Config {
+            tables: self.tables,
+            pages: self.pages,
+        }
+    }
 }
 
 /// Read the file at `path` and give its tables.
@@ -450,13 +557,18 @@ pub struct Loaded {
 pub fn load(path: &Path, origin: Origin) -> Result<Loaded, ConfigError> {
     let name = path.display().to_string();
     match std::fs::read_to_string(path) {
-        Ok(text) => Ok(Loaded {
-            tables: parse(&name, &text)?,
-            note: None,
-        }),
+        Ok(text) => {
+            let config = parse(&name, &text)?;
+            Ok(Loaded {
+                tables: config.tables,
+                pages: config.pages,
+                note: None,
+            })
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && origin == Origin::Default => {
             Ok(Loaded {
                 tables: Tables::legacy(),
+                pages: PageUrls::default(),
                 note: Some(format!("no config at {name}. The built-in tables apply.")),
             })
         }
@@ -475,6 +587,7 @@ mod tests {
         Alert, Alerts, Background, ClearRule, Font, Motion, Priority, TextColor, TextStyle,
     };
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
+    use gameclock_core::page::PageName;
     use gameclock_core::schedule::Schedule;
     use jiff::tz::TimeZone;
     use jiff::{SignedDuration, Timestamp, Zoned};
@@ -482,7 +595,7 @@ mod tests {
     const PATH: &str = "/tmp/gc.toml";
 
     fn ok(text: &str) -> Tables {
-        parse(PATH, text).unwrap()
+        parse(PATH, text).unwrap().tables
     }
 
     fn err(text: &str) -> ConfigError {
@@ -804,13 +917,91 @@ clear = "removable"
         );
     }
 
+    // The pages section (`openspec/specs/daemon-config`).
+
+    fn pages(text: &str) -> PageUrls {
+        parse(PATH, text).unwrap().pages
+    }
+
+    #[test]
+    fn pages_from_the_file() {
+        let p = pages("[pages]\noutdoor = \"http://outdoor.example/realtime.json\"\n");
+        assert_eq!(
+            p.get(PageName::Outdoor),
+            Some("http://outdoor.example/realtime.json")
+        );
+        assert_eq!(p.get(PageName::Weather), None);
+        assert_eq!(p.get(PageName::Indoor), None);
+        assert_eq!(p.names(), [PageName::Outdoor]);
+    }
+
+    #[test]
+    fn all_three_pages() {
+        let p = pages(
+            "[pages]\nweather = \"https://weather.example/f\"\nindoor = \"http://in.example/r\"\noutdoor = \"http://out.example/r\"\n",
+        );
+        assert_eq!(p.names(), PageName::ALL);
+        assert_eq!(p.get(PageName::Weather), Some("https://weather.example/f"));
+    }
+
+    #[test]
+    fn no_pages_section() {
+        assert_eq!(pages(""), PageUrls::default());
+        assert_eq!(pages(DINNER).names(), []);
+        assert_eq!(pages("[pages]\n").names(), []);
+    }
+
+    #[test]
+    fn url_with_a_different_scheme() {
+        assert_eq!(
+            err("[pages]\nweather = \"file:///etc/passwd\"\n").to_string(),
+            "/tmp/gc.toml:2:11: the page URL must start with http:// or https://."
+        );
+    }
+
+    #[test]
+    fn url_that_starts_with_a_dash() {
+        let (_, _, message) = place(&err("[pages]\nindoor = \"-o/tmp/x\"\n"));
+        assert_eq!(message, "the page URL must start with http:// or https://.");
+    }
+
+    #[test]
+    fn url_with_a_space() {
+        let (_, _, message) = place(&err("[pages]\noutdoor = \"http://a b/\"\n"));
+        assert_eq!(message, "the page URL has a space or a control character.");
+        let (_, _, message) = place(&err("[pages]\noutdoor = \"http://a\\tb/\"\n"));
+        assert_eq!(message, "the page URL has a space or a control character.");
+    }
+
+    #[test]
+    fn url_that_is_too_long() {
+        let long = format!("http://{}", "a".repeat(250));
+        assert_eq!(long.len(), 257);
+        let (_, _, message) = place(&err(&format!("[pages]\nindoor = \"{long}\"\n")));
+        assert_eq!(message, "the page URL has more than 256 characters.");
+        let ok_url = &long[..256];
+        assert_eq!(
+            pages(&format!("[pages]\nindoor = \"{ok_url}\"\n")).get(PageName::Indoor),
+            Some(ok_url)
+        );
+    }
+
+    #[test]
+    fn unknown_page_key() {
+        let (line, _, message) = place(&err("[pages]\ngarage = \"http://g/\"\n"));
+        assert_eq!(line, 2);
+        assert!(message.contains("garage"), "{message}");
+    }
+
     // The example file gives the legacy tables.
 
     #[test]
     fn the_example_file_gives_the_legacy_tables() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../deploy/config.toml");
         let text = std::fs::read_to_string(path).expect("deploy/config.toml");
-        assert_eq!(parse(path, &text).unwrap(), Tables::legacy());
+        let config = parse(path, &text).unwrap();
+        assert_eq!(config.tables, Tables::legacy());
+        assert_eq!(config.pages, PageUrls::default());
     }
 
     // The load reads a file.

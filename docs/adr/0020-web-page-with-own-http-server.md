@@ -3,7 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-11-16
 - **Related:** ADR-0003, ADR-0006, ADR-0010, ADR-0016, ADR-0017, ADR-0018.
-  OpenSpec change `web-control`.
+  OpenSpec change `web-control`. ADR-0021 adds the page buttons and their
+  data.
 
 ## Context
 

@@ -9,8 +9,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use gameclock_core::message::Message;
+use gameclock_core::page::PageName;
 
-use crate::command::{Command, CommandError, NO_ANSWER, parse_color};
+use crate::command::{Command, CommandError, NO_ANSWER, parse_color, parse_page};
 use crate::control::ask_loop;
 use crate::http::{MAX_BODY, MAX_HEAD, Parse, Request, Response, Status, parse};
 use crate::{Event, THREAD_STACK};
@@ -165,6 +166,7 @@ pub fn route(request: &Request, ask: &mut dyn FnMut(Command) -> Reply) -> Respon
         "/alert" => ("POST", Some(Action::Alert)),
         "/alert/stop" => ("POST", Some(Action::Stop)),
         "/clear" => ("POST", Some(Action::Clear)),
+        "/page" => ("POST", Some(Action::Page)),
         _ => return Response::refusal(Status::NotFound),
     };
     if method != allow {
@@ -193,6 +195,7 @@ enum Action {
     Alert,
     Stop,
     Clear,
+    Page,
 }
 
 fn post(request: &Request, action: Action, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
@@ -215,6 +218,10 @@ fn post(request: &Request, action: Action, ask: &mut dyn FnMut(Command) -> Reply
         Action::Alert => Command::Alert(form.get("name").map(str::to_owned)),
         Action::Stop => Command::StopAlert,
         Action::Clear => Command::Clear,
+        Action::Page => match parse_page(form.get("name").unwrap_or_default()) {
+            Ok(page) => Command::Page(page),
+            Err(e) => return page(Status::BadRequest, Some(&e.reply()), ask),
+        },
     };
     match ask(command) {
         Reply::Answer(reply) => {
@@ -289,9 +296,10 @@ const POLICY: &str =
 const PAGE_START: &str = include_str!("web/page-start.html");
 
 /// The page, with the status, the controls, and the reply of an action. The
-/// page asks the loop for the status and the alert names.
+/// page asks the loop for the status, the page names, and the alert names.
 fn page(status: Status, reply: Option<&str>, ask: &mut dyn FnMut(Command) -> Reply) -> Response {
     let state = ask(Command::Status);
+    let pages = ask(Command::PageNames);
     let names = ask(Command::AlertNames);
     let mut html = String::with_capacity(4096);
     html.push_str(PAGE_START);
@@ -309,6 +317,7 @@ fn page(status: Status, reply: Option<&str>, ask: &mut dyn FnMut(Command) -> Rep
         html.push_str("</p>\n");
     }
     html.push_str(MESSAGE_FORM);
+    push_page_buttons(&mut html, &pages);
     html.push_str("<h2>Alerts</h2>\n<div class=\"row\">\n");
     if let Reply::Answer(names) = &names {
         for name in names
@@ -355,8 +364,44 @@ const PAGE_END: &str = "\
 </html>
 ";
 
+/// Add one button for each page in the reply to `PageNames`. Add nothing if
+/// no page has a URL.
+fn push_page_buttons(html: &mut String, pages: &Reply) {
+    let Reply::Answer(names) = pages else {
+        return;
+    };
+    let names: Vec<PageName> = names
+        .strip_prefix("ok")
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(PageName::parse)
+        .collect();
+    if names.is_empty() {
+        return;
+    }
+    html.push_str("<h2>Pages</h2>\n<div class=\"row\">\n");
+    for page in names {
+        html.push_str("<form method=\"post\" action=\"/page\">");
+        html.push_str("<input type=\"hidden\" name=\"name\" value=\"");
+        html.push_str(page.name());
+        html.push_str("\"><button class=\"page\">");
+        html.push_str(page_label(page));
+        html.push_str("</button></form>\n");
+    }
+    html.push_str("</div>\n");
+}
+
+/// The text of the button of `page`.
+fn page_label(page: PageName) -> &'static str {
+    match page {
+        PageName::Weather => "Weather",
+        PageName::Indoor => "Indoor",
+        PageName::Outdoor => "Outdoor",
+    }
+}
+
 /// Add the status line. The `status` reply has the form
-/// `ok mode=… zone=… brightness=… messages=… alert=…`.
+/// `ok mode=… zone=… brightness=… messages=… alert=… page=…`.
 fn push_status_line(html: &mut String, state: &Reply) {
     html.push_str("<p class=\"status\">");
     match state {
@@ -371,6 +416,7 @@ fn push_status_line(html: &mut String, state: &Reply) {
                 ("Brightness", "brightness", "%"),
                 ("Messages", "messages", ""),
                 ("Alert", "alert", ""),
+                ("Page", "page", ""),
             ]
             .into_iter()
             .enumerate()
@@ -486,12 +532,13 @@ fn hex(b: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::command::Command;
     use crate::http::{Parse, Request, Status, parse};
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::message::Message;
 
-    const STATUS: &str = "ok mode=clock zone=UTC brightness=60 messages=2 alert=none";
+    const STATUS: &str = "ok mode=clock zone=UTC brightness=60 messages=2 alert=none page=none";
     const NAMES: [&str; 3] = ["panic", "bedtime", "bed-flash"];
 
     fn request(bytes: &str) -> Request {
@@ -515,6 +562,7 @@ mod tests {
         Reply::Answer(match command {
             Command::Status => STATUS.to_owned(),
             Command::AlertNames => format!("ok {}", NAMES.join(" ")),
+            Command::PageNames => "ok indoor outdoor".to_owned(),
             Command::Alert(Some(name)) if !NAMES.contains(&name.as_str()) => format!(
                 "error: unknown alert '{name}'. The alerts are panic, bedtime, and bed-flash."
             ),
@@ -538,7 +586,12 @@ mod tests {
         });
         let actions = seen
             .into_iter()
-            .filter(|c| !matches!(c, Command::Status | Command::AlertNames))
+            .filter(|c| {
+                !matches!(
+                    c,
+                    Command::Status | Command::AlertNames | Command::PageNames
+                )
+            })
             .collect();
         (response, actions)
     }
@@ -593,6 +646,7 @@ mod tests {
         for word in ["clock", "60", "2", "none"] {
             assert!(line.contains(word), "{word} in {line}");
         }
+        assert!(line.contains("Page: none"), "{line}");
     }
 
     #[test]
@@ -615,6 +669,63 @@ mod tests {
         let page = body(&response);
         assert_eq!(page.matches(r#"action="/alert">"#).count(), 1, "{page}");
         assert!(page.contains(r#"<input type="hidden" name="name" value="dinner">"#));
+    }
+
+    // Pages (`openspec/specs/sensor-pages`).
+
+    #[test]
+    fn page_buttons_from_the_config() {
+        let (_, page) = get_page();
+        assert_eq!(page.matches(r#"action="/page">"#).count(), 2, "{page}");
+        assert!(page.contains(r#"<input type="hidden" name="name" value="outdoor">"#));
+        assert!(page.contains(r#"<input type="hidden" name="name" value="indoor">"#));
+        assert!(!page.contains(r#"value="weather""#));
+        assert!(page.contains(">Outdoor</button>"), "{page}");
+    }
+
+    #[test]
+    fn no_pages_in_the_config() {
+        let (response, _) = send_with(&request("GET / HTTP/1.1\r\n\r\n"), |command| {
+            Reply::Answer(match command {
+                Command::PageNames => "ok".to_owned(),
+                Command::AlertNames => "ok panic".to_owned(),
+                _ => STATUS.to_owned(),
+            })
+        });
+        let page = body(&response);
+        assert!(!page.contains(r#"action="/page""#), "{page}");
+        assert!(!page.contains("<h2>Pages</h2>"), "{page}");
+    }
+
+    #[test]
+    fn request_a_page() {
+        let (response, actions) = send(&post("/page", "name=weather"));
+        assert_eq!(actions, [Command::Page(PageName::Weather)]);
+        assert_eq!(response.status, Status::Ok);
+    }
+
+    #[test]
+    fn unknown_page_from_the_form() {
+        let (response, actions) = send(&post("/page", "name=garage"));
+        assert_eq!(actions, []);
+        assert_eq!(response.status, Status::BadRequest);
+        assert!(
+            body(&response).contains(
+                "error: unknown page &#39;garage&#39;. The pages are weather, indoor, and outdoor."
+            ),
+            "{}",
+            body(&response)
+        );
+        let (response, actions) = send(&post("/page", ""));
+        assert_eq!(actions, []);
+        assert_eq!(response.status, Status::BadRequest);
+    }
+
+    #[test]
+    fn page_is_a_post() {
+        let (response, actions) = send(&request("GET /page HTTP/1.1\r\n\r\n"));
+        assert_eq!(actions, []);
+        assert_eq!(response.status, Status::MethodNotAllowed);
     }
 
     #[test]

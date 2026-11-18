@@ -39,10 +39,12 @@ names the address and the error. It SHALL then run with no web page.
 
 ### Requirement: The page shows the status and the controls
 `GET /` SHALL give status 200 and an HTML page in UTF-8. The page SHALL show
-the mode, the brightness, the number of messages, and the alert on the panel.
+the mode, the brightness, the number of messages, the alert on the panel,
+and the page on the panel.
 It SHALL have a message form with the text, the passes, and the color. It
-SHALL have one button for each alert in the current alert table, a clear
-button, and a stop-alert button. The page SHALL work with no JavaScript.
+SHALL have one button for each alert in the current alert table. It SHALL
+have one button for each page that has a URL in the config. It SHALL have a
+clear button and a stop-alert button. The page SHALL work with no JavaScript.
 
 #### Scenario: Page with the built-in alerts
 - **WHEN** the loop has the built-in tables, and a client sends `GET /`
@@ -53,7 +55,7 @@ button, and a stop-alert button. The page SHALL work with no JavaScript.
 
 #### Scenario: Page shows the status
 - **WHEN** the clock is the base scene at brightness 60, with two messages and no alert, and a client sends `GET /`
-- **THEN** the page has the text `clock`, `60`, `2`, and `none` in its status line
+- **THEN** the page has the text `clock`, `60`, `2`, and `none` in its status line, and `none` for the page
 
 #### Scenario: Page after a reload
 - **WHEN** a `reload` makes the alert table `dinner` only, and a client then sends `GET /`
@@ -63,11 +65,20 @@ button, and a stop-alert button. The page SHALL work with no JavaScript.
 - **WHEN** a client posts `name=%3Cb%3E%26%22%27` to `/alert`, and the loop replies with the unknown-alert error that contains the name
 - **THEN** the page has `&lt;b&gt;&amp;&quot;&#39;` and does not have `<b>&"'`
 
+#### Scenario: Page buttons from the config
+- **WHEN** the config gives URLs for `outdoor` and `indoor` only, and a client sends `GET /`
+- **THEN** the page has two forms that post to `/page`, with `name` set to `outdoor` and `indoor`
+- **AND** the page has no form with `name` set to `weather`
+
+#### Scenario: No pages in the config
+- **WHEN** the config has no `[pages]` section, and a client sends `GET /`
+- **THEN** the page has no form that posts to `/page`
+
 ### Requirement: Each action sends a command to the loop
 Each action SHALL send one command to the loop through the event channel,
 the same as the control socket. `POST /message` sends `message`, and
-`POST /alert` sends `alert <name>`. `POST /alert/stop` sends `alert stop`, and
-`POST /clear` sends `clear`. The response SHALL be the page with the reply of
+`POST /alert` sends `alert <name>`. `POST /alert/stop` sends `alert stop`.
+`POST /clear` sends `clear`, and `POST /page` sends `page <name>`. The response SHALL be the page with the reply of
 the loop. The status SHALL be 200 for `ok`, 400 for an error about the
 request, and 503 if the loop does not answer in 2 s.
 
@@ -111,6 +122,14 @@ request, and 503 if the loop does not answer in 2 s.
 #### Scenario: The loop does not answer
 - **WHEN** a client posts `msg=hi` to `/message`, and the loop does not answer in 2 s
 - **THEN** the status is 503, and the page has `the daemon did not answer in 2 s.`
+
+#### Scenario: Request a page
+- **WHEN** a client posts `name=weather` to `/page`, and the config gives a URL for `weather`
+- **THEN** the loop gets the command `page weather`, and the status is 200
+
+#### Scenario: Unknown page from the form
+- **WHEN** a client posts `name=garage` to `/page`
+- **THEN** the status is 400, and the page has the unknown-page reply that lists the pages
 
 ### Requirement: Legacy form values start the alerts
 `POST /message` SHALL treat the `msg` value `panic88` as the command

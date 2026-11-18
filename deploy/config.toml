@@ -110,3 +110,13 @@ days = ["sun", "mon", "tue", "wed", "thu"]
 from = "23:05"
 to = "23:16"
 every = 10
+
+# The data pages (docs/adr/0021). Each URL is optional, and there are no
+# built-in URLs. A page with a URL gets a button on the web page, and
+# `sudo gameclockd ctl page <name>` shows it for 30 s.
+# Put the real addresses only in the config on the Pi, never in the repo.
+#
+# [pages]
+# weather = "https://api.weather.gov/gridpoints/<office>/<x>,<y>/forecast"
+# indoor = "http://<indoor-sensor>/realtime.json"
+# outdoor = "http://<outdoor-sensor>/realtime.json"

@@ -48,7 +48,7 @@ After a `reload`:
 
 ## The sections
 
-The file has three sections. Each section is optional.
+The file has four sections. Each section is optional.
 
 - A section in the file **replaces the whole built-in table** of that
   section. To add one alert, copy the built-in alerts that you want to keep.
@@ -56,6 +56,7 @@ The file has three sections. Each section is optional.
 - A section that is not in the file uses its built-in table.
 - Without a `[[trigger]]` section, the built-in bedtime triggers apply, but
   only for the alerts `bed-flash` and `bedtime` that the alert table has.
+- Without a `[pages]` section, no page has a URL.
 
 The daemon refuses a key that it does not know, and a value of the wrong
 type.
@@ -151,6 +152,31 @@ The rule starts its alert at `from`, and then each `every` seconds, before
 A trigger follows the priority rules. If the item on the panel has the same
 or a higher priority, the trigger does nothing. If its alert shows already,
 the trigger does nothing.
+
+### `[pages]`: the data pages
+
+```toml
+[pages]
+weather = "https://api.weather.gov/gridpoints/<office>/<x>,<y>/forecast"
+indoor = "http://<indoor-sensor>/realtime.json"
+outdoor = "http://<outdoor-sensor>/realtime.json"
+```
+
+Each key is optional. A page with a URL gets a button on the web page, and
+`sudo gameclockd ctl page <name>` shows it on the panel for 30 s. The daemon
+reads the URL with `curl` only when you ask for the page (ADR-0021).
+
+| Key | Value |
+|---|---|
+| `weather` | an NWS daily forecast URL. Get it from `https://api.weather.gov/points/<latitude>,<longitude>`, in the `forecast` field. |
+| `indoor`, `outdoor` | the `realtime.json` URL of an enviro sensor |
+
+Each URL starts with `http://` or `https://`, has 256 characters or fewer,
+and has no spaces. The addresses are data about the house, so keep them only
+in the config on the Pi.
+
+Before a rollback to a `gameclockd` with no pages, remove the `[pages]`
+section. An older daemon refuses the unknown section and does not start.
 
 ## The built-in tables
 

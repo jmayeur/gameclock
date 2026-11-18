@@ -9,6 +9,7 @@ use gameclock_core::Brightness;
 use gameclock_core::alert::Alerts;
 use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
 use gameclock_core::message::{Message, MessageError};
+use gameclock_core::page::PageName;
 use jiff::tz::TimeZone;
 
 use crate::Mode;
@@ -48,6 +49,12 @@ pub enum Command {
     /// Give the names of the current alerts. Only the web thread sends this
     /// command. The socket parser cannot make it (docs/adr/0020).
     AlertNames,
+    /// Fetch the data of the page, and show the page when the data arrives
+    /// (docs/adr/0021).
+    Page(PageName),
+    /// Give the names of the pages that have a URL. Only the web thread sends
+    /// this command. The socket parser cannot make it.
+    PageNames,
 }
 
 /// A command line that is not a command.
@@ -69,6 +76,10 @@ pub enum CommandError {
     Color,
     /// A `message` option that is not `--passes` or `--color`.
     UnknownOption(String),
+    /// A `page` command with no name.
+    NoPageName,
+    /// A `page` command with a name that is not a page.
+    UnknownPage(String),
 }
 
 impl CommandError {
@@ -86,7 +97,7 @@ impl fmt::Display for CommandError {
             Self::NotUtf8 => f.write_str("the command is not UTF-8 text."),
             Self::Unknown(name) => write!(
                 f,
-                "unknown command '{name}'. The commands are clock, test-pattern, status, message, clear, alert, and reload."
+                "unknown command '{name}'. The commands are clock, test-pattern, status, message, clear, alert, page, and reload."
             ),
             Self::NoText => f.write_str("the message has no text."),
             Self::TextTooLong => write!(
@@ -105,6 +116,13 @@ impl fmt::Display for CommandError {
             Self::UnknownOption(option) => write!(
                 f,
                 "unknown message option '{option}'. The options are --passes and --color."
+            ),
+            Self::NoPageName => {
+                f.write_str("the page command needs a name: weather, indoor, or outdoor.")
+            }
+            Self::UnknownPage(name) => write!(
+                f,
+                "unknown page '{name}'. The pages are weather, indoor, and outdoor."
             ),
         }
     }
@@ -128,6 +146,9 @@ pub fn parse_command(line: &[u8]) -> Result<Command, CommandError> {
     if word == "message" {
         return parse_message(rest).map(Command::Message);
     }
+    if word == "page" {
+        return parse_page(rest).map(Command::Page);
+    }
     if word == "alert" {
         return Ok(match rest.trim() {
             "" => Command::Alert(None),
@@ -142,6 +163,18 @@ pub fn parse_command(line: &[u8]) -> Result<Command, CommandError> {
         "clear" => Ok(Command::Clear),
         "reload" => Ok(Command::Reload),
         other => Err(CommandError::Unknown(other.to_owned())),
+    }
+}
+
+/// The page of the name `name`.
+///
+/// # Errors
+/// [`CommandError::NoPageName`] for an empty name, and
+/// [`CommandError::UnknownPage`] for a name that is not a page.
+pub fn parse_page(name: &str) -> Result<PageName, CommandError> {
+    match name.trim() {
+        "" => Err(CommandError::NoPageName),
+        name => PageName::parse(name).ok_or_else(|| CommandError::UnknownPage(name.to_owned())),
     }
 }
 
@@ -215,8 +248,21 @@ pub fn alert_names_reply(alerts: &Alerts) -> String {
     reply
 }
 
+/// The reply to [`Command::PageNames`]: `ok` and the names of `pages`, with
+/// one space between them.
+#[must_use]
+pub fn page_names_reply(pages: &[PageName]) -> String {
+    let mut reply = OK.to_owned();
+    for page in pages {
+        reply.push(' ');
+        reply.push_str(page.name());
+    }
+    reply
+}
+
 /// The reply to `status`. `messages` is the number of messages on the panel
-/// and in the queue. `alert` is the name of the alert on the panel.
+/// and in the queue. `alert` is the name of the alert on the panel, and
+/// `page` is the page on the panel.
 #[must_use]
 pub fn status_reply(
     mode: Mode,
@@ -224,11 +270,13 @@ pub fn status_reply(
     brightness: Brightness,
     messages: usize,
     alert: Option<&str>,
+    page: Option<PageName>,
 ) -> String {
     let zone = zone.iana_name().unwrap_or("unnamed");
     let alert = alert.unwrap_or("none");
+    let page = page.map_or("none", PageName::name);
     format!(
-        "ok mode={} zone={zone} brightness={} messages={messages} alert={alert}",
+        "ok mode={} zone={zone} brightness={} messages={messages} alert={alert} page={page}",
         mode.name(),
         brightness.percent()
     )
@@ -241,6 +289,7 @@ mod tests {
     use gameclock_core::Brightness;
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
     use gameclock_core::message::Message;
+    use gameclock_core::page::PageName;
     use jiff::tz::TimeZone;
 
     #[test]
@@ -259,7 +308,7 @@ mod tests {
         assert_eq!(err, CommandError::Unknown("frobnicate".into()));
         assert_eq!(
             err.reply(),
-            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, and reload."
+            "error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, page, and reload."
         );
     }
 
@@ -483,36 +532,60 @@ mod tests {
 
     #[test]
     fn status_of_the_clock() {
-        let reply = status_reply(Mode::Clock, &TimeZone::UTC, Brightness::new(25), 0, None);
+        let reply = status_reply(
+            Mode::Clock,
+            &TimeZone::UTC,
+            Brightness::new(25),
+            0,
+            None,
+            None,
+        );
         assert_eq!(
             reply,
-            "ok mode=clock zone=UTC brightness=25 messages=0 alert=none"
+            "ok mode=clock zone=UTC brightness=25 messages=0 alert=none page=none"
         );
     }
 
     #[test]
     fn status_of_the_test_pattern() {
-        let reply = status_reply(Mode::TestPattern, &TimeZone::UTC, Brightness::MAX, 0, None);
+        let reply = status_reply(
+            Mode::TestPattern,
+            &TimeZone::UTC,
+            Brightness::MAX,
+            0,
+            None,
+            None,
+        );
         assert_eq!(
             reply,
-            "ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none"
+            "ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none page=none"
         );
     }
 
     #[test]
     fn status_with_an_unnamed_zone() {
         let zone = TimeZone::fixed(jiff::tz::offset(2));
-        let reply = status_reply(Mode::Clock, &zone, Brightness::new(60), 0, None);
+        let reply = status_reply(Mode::Clock, &zone, Brightness::new(60), 0, None, None);
         assert_eq!(
             reply,
-            "ok mode=clock zone=unnamed brightness=60 messages=0 alert=none"
+            "ok mode=clock zone=unnamed brightness=60 messages=0 alert=none page=none"
         );
     }
 
     #[test]
     fn status_with_three_messages() {
-        let reply = status_reply(Mode::Clock, &TimeZone::UTC, Brightness::new(60), 3, None);
-        assert!(reply.ends_with(" messages=3 alert=none"), "{reply}");
+        let reply = status_reply(
+            Mode::Clock,
+            &TimeZone::UTC,
+            Brightness::new(60),
+            3,
+            None,
+            None,
+        );
+        assert!(
+            reply.ends_with(" messages=3 alert=none page=none"),
+            "{reply}"
+        );
     }
 
     #[test]
@@ -523,8 +596,71 @@ mod tests {
             Brightness::new(60),
             2,
             Some("panic"),
+            None,
         );
-        assert!(reply.ends_with(" messages=2 alert=panic"), "{reply}");
+        assert!(
+            reply.ends_with(" messages=2 alert=panic page=none"),
+            "{reply}"
+        );
+    }
+
+    #[test]
+    fn status_during_a_page() {
+        let reply = status_reply(
+            Mode::Clock,
+            &TimeZone::UTC,
+            Brightness::new(60),
+            1,
+            None,
+            Some(PageName::Outdoor),
+        );
+        assert!(
+            reply.ends_with(" messages=1 alert=none page=outdoor"),
+            "{reply}"
+        );
+    }
+
+    #[test]
+    fn page_commands_parse() {
+        assert_eq!(
+            parse_command(b"page outdoor"),
+            Ok(Command::Page(PageName::Outdoor))
+        );
+        assert_eq!(
+            parse_command(b"  page   weather "),
+            Ok(Command::Page(PageName::Weather))
+        );
+        assert_eq!(
+            parse_command(b"page indoor"),
+            Ok(Command::Page(PageName::Indoor))
+        );
+    }
+
+    #[test]
+    fn no_page_name() {
+        let e = parse_command(b"page").unwrap_err();
+        assert_eq!(
+            e.reply(),
+            "error: the page command needs a name: weather, indoor, or outdoor."
+        );
+    }
+
+    #[test]
+    fn unknown_page() {
+        let e = parse_command(b"page garage").unwrap_err();
+        assert_eq!(
+            e.reply(),
+            "error: unknown page 'garage'. The pages are weather, indoor, and outdoor."
+        );
+    }
+
+    #[test]
+    fn page_names_reply_lists_the_pages_with_a_url() {
+        assert_eq!(page_names_reply(&[]), "ok");
+        assert_eq!(
+            page_names_reply(&[PageName::Indoor, PageName::Outdoor]),
+            "ok indoor outdoor"
+        );
     }
 
     #[test]

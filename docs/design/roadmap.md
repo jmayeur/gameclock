@@ -61,16 +61,32 @@ and scope can change. Update this file when a change merges or a plan changes.
    legacy Python clock, nginx, PM2, and Node are deprecated. They are
    disabled at boot, and their files stay on the Pi for `--rollback`.
 
+## Data on the panel
+
+10. **`sensor-pages`**: **done**. The web page has Weather, Indoor, and
+    Outdoor buttons. Each button shows a data page on the panel for 30 s.
+    The data comes from the two enviro sensor Pis and the NWS forecast. The
+    daemon downloads it with the system `curl` only on a request, and
+    `serde_json` parses it (ADR-0021). The `[pages]` config section gives
+    the URLs.
+
 ## Later candidates
 
 - Remove the deprecated legacy stack from the Pi after some weeks of use:
   the Python clock, nginx, PM2, and Node. The rollback needs them until then.
   The removal is an OpenSpec change, because it ends `--rollback`.
-- Priorities, layers, and overlays, for example a clock with a message ticker.
-  Transitions between scenes.
-- Data-driven scenes: calendar events (the legacy events sync), weather, and
+- `text-fonts`: fonts chosen by name, and a renderer for proportional
+  fonts. Fun fonts for alerts and messages, for example from the
+  `u8g2-fonts` crate. The legacy `7x13B` font is already in use. Only
+  `texgyre-27` is missing.
+- `clock-face`: a larger clock with digits about 20 px tall, which uses
+  more of the panel.
+- `icons`: one-color glyph icons, and small color sprites made from PNGs at
+  build time, for weather and sensor pages.
+- `panel-layout`: pages that rotate, or regions, so that the clock and the
+  data can show together. Priorities, layers, and overlays, for example a
+  clock with a message ticker. Transitions between scenes.
+- Data-driven scenes: calendar events (the legacy events sync) and
   countdowns.
 - A metrics endpoint (CPU, refresh rate, uptime) to keep the performance
   budget honest.
-- BDF font loading, so we can use the legacy fonts (`7x13B`, `texgyre-27`)
-  again.
