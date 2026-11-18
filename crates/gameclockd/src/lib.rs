@@ -13,18 +13,22 @@ pub mod sim;
 pub mod command;
 pub mod config;
 pub mod control;
+pub mod fetch;
 pub mod http;
+pub mod pages;
 pub mod web;
 
 use command::{
-    Command, OK, alert_names_reply, no_alert_name_reply, status_reply, unknown_alert_reply,
+    Command, OK, alert_names_reply, no_alert_name_reply, page_names_reply, status_reply,
+    unknown_alert_reply,
 };
-use config::{ConfigError, Origin};
+use config::{Config, ConfigError, Origin, PageUrls};
 
 use gameclock_core::alert::{Alerts, Triggers};
-use gameclock_core::board::Board;
+use gameclock_core::board::{Board, PageRefused};
 use gameclock_core::clock::Clock as ClockScene;
 use gameclock_core::heartbeat::Heartbeat;
+use gameclock_core::page::{PageName, PageScene};
 use gameclock_core::schedule::Schedule;
 use gameclock_core::tables::Tables;
 use gameclock_core::{Brightness, Compositor, Frame, Panel, Scene};
@@ -89,13 +93,47 @@ pub struct Request {
     pub reply: mpsc::Sender<String>,
 }
 
-/// An event for the loop: from the signal thread or the socket thread.
+/// A fetch of page data for the `fetch` thread (docs/adr/0021).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Job {
+    /// The number of the request. Only the newest request shows.
+    pub seq: u64,
+    /// The page.
+    pub page: PageName,
+    /// The URL to fetch.
+    pub url: String,
+}
+
+/// The result of a [`Job`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fetched {
+    /// The number of the request.
+    pub seq: u64,
+    /// The page.
+    pub page: PageName,
+    /// The body, or the reason that the fetch failed.
+    pub body: Result<Vec<u8>, String>,
+}
+
+/// Starts page fetches for the loop, and writes their warnings
+/// (docs/adr/0021).
+pub trait Fetch {
+    /// Start `job`. Do not wait for it. Its result arrives as an event.
+    fn start(&mut self, job: Job);
+
+    /// Write a warning line about a page to standard error.
+    fn warn(&mut self, line: &str);
+}
+
+/// An event for the loop: from the signal, socket, web, or fetch thread.
 #[derive(Debug)]
 pub enum Event {
     /// A stop signal came.
     Shutdown,
     /// A command came.
     Command(Request),
+    /// The result of a page fetch came.
+    Fetched(Fetched),
 }
 
 /// Why a wait ended.
@@ -107,6 +145,8 @@ pub enum Wake {
     Shutdown,
     /// A command came. Do it and reply.
     Command(Request),
+    /// The result of a page fetch came. Show the page.
+    Fetched(Fetched),
 }
 
 /// Blocks until a deadline, a command, or a stop signal.
@@ -151,6 +191,7 @@ impl Wait for ChannelWait {
         match event {
             Ok(Event::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => Wake::Shutdown,
             Ok(Event::Command(request)) => Wake::Command(request),
+            Ok(Event::Fetched(fetched)) => Wake::Fetched(fetched),
             Err(mpsc::RecvTimeoutError::Timeout) => Wake::Deadline,
         }
     }
@@ -183,26 +224,34 @@ pub fn local_zone(lookup: Result<TimeZone, jiff::Error>) -> (TimeZone, String) {
 /// the next scene change, the next trigger time, or an event. It does not
 /// wake at other times. A command runs at once, and its reply goes back on
 /// its sender. `mode` is the mode of `base`, for `status`. The board shows
-/// messages and alerts on top of the base scene (docs/adr/0017,
-/// docs/adr/0018).
+/// messages, alerts, and pages on top of the base scene (docs/adr/0017,
+/// docs/adr/0018). `fetch` starts the page fetches (docs/adr/0021).
 ///
 /// # Errors
 /// [`RunError::Present`] if the panel fails to show a frame.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is one injected boundary of the loop"
+)]
 pub fn run<P: Panel>(
     panel: &mut P,
     base: Box<dyn Scene>,
     mode: Mode,
-    tables: Tables,
-    mut reload: impl FnMut() -> Result<Tables, ConfigError>,
+    config: Config,
+    mut reload: impl FnMut() -> Result<Config, ConfigError>,
     clock: &impl Clock,
     wait: &mut impl Wait,
+    fetch: &mut impl Fetch,
 ) -> Result<(), RunError<P::Error>> {
     let (width, height) = panel.dimensions();
-    let Tables {
-        schedule,
-        alerts,
-        triggers,
-    } = tables;
+    let Config {
+        tables: Tables {
+            schedule,
+            alerts,
+            triggers,
+        },
+        pages,
+    } = config;
     let mut state = State {
         compositor: Compositor::new(base, width, height),
         board: Board::new(width, schedule.clone()),
@@ -210,6 +259,10 @@ pub fn run<P: Panel>(
         mode,
         schedule,
         alerts,
+        pages,
+        width,
+        seq: 0,
+        pending: None,
     };
     loop {
         let now = clock.now();
@@ -228,10 +281,11 @@ pub fn run<P: Panel>(
             Wake::Shutdown => return Ok(()),
             Wake::Command(Request { command, reply }) => {
                 // Each change shows on the panel before the reply.
-                let text = state.command(command, &clock.now(), panel, &mut reload)?;
+                let text = state.command(command, &clock.now(), panel, &mut reload, fetch)?;
                 // The client can be gone. That is not an error of the loop.
                 let _ = reply.send(text);
             }
+            Wake::Fetched(fetched) => state.fetched(&fetched, &clock.now(), panel, fetch)?,
         }
     }
 }
@@ -244,6 +298,12 @@ struct State {
     mode: Mode,
     schedule: Schedule,
     alerts: Alerts,
+    pages: PageUrls,
+    width: usize,
+    /// The number of the last page request.
+    seq: u64,
+    /// The newest page request that has no data yet.
+    pending: Option<(u64, PageName)>,
 }
 
 impl State {
@@ -254,7 +314,8 @@ impl State {
         command: Command,
         now: &Zoned,
         panel: &mut P,
-        reload: &mut impl FnMut() -> Result<Tables, ConfigError>,
+        reload: &mut impl FnMut() -> Result<Config, ConfigError>,
+        fetch: &mut impl Fetch,
     ) -> Result<String, RunError<P::Error>> {
         let text = match command {
             Command::Mode(next) => {
@@ -306,13 +367,8 @@ impl State {
                 Err(e) => format!("error: {e}"),
             },
             Command::AlertNames => alert_names_reply(&self.alerts),
-            Command::Page(page) => {
-                format!(
-                    "error: the page '{}' has no URL in the config.",
-                    page.name()
-                )
-            }
-            Command::PageNames => OK.to_owned(),
+            Command::Page(page) => self.request(page, now, fetch),
+            Command::PageNames => page_names_reply(&self.pages.names()),
             Command::StopAlert => {
                 self.board.stop_alert(now, &mut self.compositor);
                 self.show(now, panel)?;
@@ -322,14 +378,72 @@ impl State {
         Ok(text)
     }
 
-    /// Use the tables `new`. The scene on the panel keeps its alert and its
-    /// schedule. New scenes use the new tables.
+    /// Start a fetch for `page`, if it has a URL and no alert blocks it.
+    /// Give the reply line.
+    fn request(&mut self, page: PageName, now: &Zoned, fetch: &mut impl Fetch) -> String {
+        let Some(url) = self.pages.get(page) else {
+            return format!(
+                "error: the page '{}' has no URL in the config.",
+                page.name()
+            );
+        };
+        if let Some(by) = self.board.page_blocker(now, &mut self.compositor) {
+            return format!("error: {}", PageRefused { page, by });
+        }
+        self.seq += 1;
+        self.pending = Some((self.seq, page));
+        fetch.start(Job {
+            seq: self.seq,
+            page,
+            url: url.to_owned(),
+        });
+        OK.to_owned()
+    }
+
+    /// Show the page of `fetched` at `now`, if it is the newest request.
+    fn fetched<P: Panel>(
+        &mut self,
+        fetched: &Fetched,
+        now: &Zoned,
+        panel: &mut P,
+        fetch: &mut impl Fetch,
+    ) -> Result<(), RunError<P::Error>> {
+        if self.pending != Some((fetched.seq, fetched.page)) {
+            return Ok(());
+        }
+        self.pending = None;
+        let page = fetched.page;
+        let body = fetched.body.as_deref().map_err(String::as_str);
+        let (data, reason) = pages::page_data(page, body, now.timestamp());
+        if let Some(reason) = reason {
+            fetch.warn(&format!(
+                "gameclockd: the page '{}' has no data: {reason}.",
+                page.name()
+            ));
+        }
+        let scene = PageScene::new(
+            page,
+            &data,
+            now.timestamp(),
+            self.width,
+            self.schedule.clone(),
+        );
+        if let Err(refused) = self.board.page(scene, now, &mut self.compositor) {
+            fetch.warn(&format!("gameclockd: {refused}"));
+        }
+        self.show(now, panel)
+    }
+
+    /// Use the values of `new`. The scene on the panel keeps its alert and
+    /// its schedule. New scenes use the new tables and URLs.
     fn reload<P: Panel>(
         &mut self,
-        new: Tables,
+        new: Config,
         now: &Zoned,
         panel: &mut P,
     ) -> Result<(), RunError<P::Error>> {
+        self.pages = new.pages;
+        let new = new.tables;
         self.schedule = new.schedule;
         self.alerts = new.alerts;
         self.triggers = Triggers::new(new.triggers, now);
@@ -648,9 +762,11 @@ mod tests {
     use std::sync::mpsc;
 
     use crate::command::{Command, OK};
-    use crate::config::ConfigError;
+    use crate::config::{ConfigError, PageUrls};
+    use core::cell::RefCell;
     use gameclock_core::alert::{Alert, AlertScene, Alerts, Trigger};
     use gameclock_core::message::{Message, Scroll};
+    use gameclock_core::page::{PageData, PageName, PageScene, Reading};
     use gameclock_core::schedule::{Style, TimeOfDay, Weekdays};
 
     use gameclock_core::embedded_graphics::pixelcolor::Rgb888;
@@ -730,6 +846,8 @@ mod tests {
         /// The time moves to this time, and this command arrives. The reply
         /// goes to the sender.
         CommandAt(&'static str, Command, mpsc::Sender<String>),
+        /// The time moves to this time, and the result of a fetch arrives.
+        FetchedAt(&'static str, Fetched),
     }
 
     /// A wait that follows a script and records each deadline. After the last
@@ -757,6 +875,10 @@ mod tests {
                 Some(Step::CommandAt(t, command, reply)) => {
                     self.now.set(ts(t));
                     Wake::Command(Request { command, reply })
+                }
+                Some(Step::FetchedAt(t, fetched)) => {
+                    self.now.set(ts(t));
+                    Wake::Fetched(fetched)
                 }
             }
         }
@@ -787,12 +909,54 @@ mod tests {
             panel,
             Box::new(Heartbeat),
             Mode::TestPattern,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         );
         (result, wait)
+    }
+
+    /// The legacy tables and no page URLs.
+    fn legacy_config() -> Config {
+        with_no_pages(Tables::legacy())
+    }
+
+    fn with_no_pages(tables: Tables) -> Config {
+        Config {
+            tables,
+            pages: PageUrls::default(),
+        }
+    }
+
+    /// A fetch that must not start: the test sends no page command.
+    #[derive(Debug, Default)]
+    struct NoFetch;
+
+    impl Fetch for NoFetch {
+        fn start(&mut self, job: Job) {
+            panic!("this test starts no fetch: {job:?}");
+        }
+        fn warn(&mut self, line: &str) {
+            panic!("this test has no page warning: {line}");
+        }
+    }
+
+    /// A fetch that records the jobs and the warnings.
+    #[derive(Debug, Default, Clone)]
+    struct RecordingFetch {
+        jobs: Rc<RefCell<Vec<Job>>>,
+        warnings: Rc<RefCell<Vec<String>>>,
+    }
+
+    impl Fetch for RecordingFetch {
+        fn start(&mut self, job: Job) {
+            self.jobs.borrow_mut().push(job);
+        }
+        fn warn(&mut self, line: &str) {
+            self.warnings.borrow_mut().push(line.to_owned());
+        }
     }
 
     fn legacy_clock() -> Box<dyn Scene> {
@@ -1118,10 +1282,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(panel.presents.len(), 1);
@@ -1146,10 +1311,11 @@ mod tests {
             &mut panel,
             Box::new(Dim { after: 25 }),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(panel.presents.len(), 1);
@@ -1164,10 +1330,11 @@ mod tests {
             &mut panel,
             Box::new(Dim { after: 60 }),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(panel.presents.len(), 2);
@@ -1198,10 +1365,11 @@ mod tests {
             &mut panel,
             Box::new(Red),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         // START is a Thursday, a bedtime night (`openspec/specs/alerts`).
@@ -1226,10 +1394,11 @@ mod tests {
             &mut panel,
             base,
             mode,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         let reply = rx.try_recv().expect("a reply");
@@ -1355,10 +1524,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         (panel, wait)
@@ -1378,10 +1548,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
@@ -1480,10 +1651,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
@@ -1524,7 +1696,7 @@ mod tests {
     }
 
     /// The reload function of a test with no `reload` command.
-    fn no_reload() -> Result<Tables, ConfigError> {
+    fn no_reload() -> Result<Config, ConfigError> {
         panic!("this test sends no reload command");
     }
 
@@ -1569,10 +1741,14 @@ mod tests {
             &mut panel,
             base,
             mode,
-            Tables::legacy(),
-            reload,
+            legacy_config(),
+            {
+                let mut reload = reload;
+                move || reload().map(with_no_pages)
+            },
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         panel
@@ -1600,10 +1776,14 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
-            reload,
+            legacy_config(),
+            {
+                let mut reload = reload;
+                move || reload().map(with_no_pages)
+            },
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(replies.try_recv().as_deref(), Ok(OK));
@@ -1827,10 +2007,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         (panel, wait)
@@ -1850,10 +2031,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
@@ -1948,10 +2130,11 @@ mod tests {
             &mut panel,
             Box::new(Heartbeat),
             Mode::TestPattern,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         let last = &panel.presents.last().unwrap().0;
@@ -1997,10 +2180,11 @@ mod tests {
             &mut panel,
             legacy_clock(),
             Mode::Clock,
-            Tables::legacy(),
+            legacy_config(),
             no_reload,
             &clock,
             &mut wait,
+            &mut NoFetch,
         )
         .unwrap();
         assert_eq!(panel.reply_before_present, vec![false, false]);
@@ -2142,10 +2326,11 @@ mod tests {
                 &mut panel,
                 Box::new(Red),
                 Mode::Clock,
-                Tables::legacy(),
+                legacy_config(),
                 no_reload,
                 &clock,
                 &mut wait,
+                &mut NoFetch,
             )
             .unwrap();
             assert!(
@@ -2190,5 +2375,277 @@ mod tests {
                 "gameclockd: the system time zone is not available. The daemon uses UTC."
             );
         }
+    }
+
+    // Pages (`openspec/specs/sensor-pages`).
+
+    const OUTDOOR_URL: &str = "http://outdoor.example/realtime.json";
+    const INDOOR_URL: &str = "http://indoor.example/realtime.json";
+    const WEATHER_URL: &str = "https://weather.example/forecast";
+
+    /// The legacy tables, and URLs for `outdoor` and `indoor`.
+    fn page_config() -> Config {
+        let text = format!("[pages]\noutdoor = \"{OUTDOOR_URL}\"\nindoor = \"{INDOOR_URL}\"\n");
+        crate::config::parse("test", &text).unwrap()
+    }
+
+    /// A reading body with the time 1970-01-01T00:00:00Z.
+    const BODY: &str = r#"{"data":[{"time":0,"run_time":1,"output_temp":41.51,"output_humidity":92.15,"output_bar":1010.4,"P25":5.02,"P10":5.86,"p1":3.78}]}"#;
+
+    fn fetched(seq: u64, page: PageName, body: Result<&str, &str>) -> Fetched {
+        Fetched {
+            seq,
+            page,
+            body: body.map(|b| b.as_bytes().to_vec()).map_err(str::to_owned),
+        }
+    }
+
+    fn page_cmd(page: PageName) -> Command {
+        Command::Page(page)
+    }
+
+    /// Run the clock with `config`, a recording fetch, and `steps`.
+    fn run_pages(
+        config: Config,
+        reloads: Vec<Config>,
+        steps: Vec<Step>,
+    ) -> (Recorder, RecordingFetch) {
+        let mut panel = Recorder::new(64, 32);
+        let mut fetch = RecordingFetch::default();
+        let (clock, mut wait) = script(START, steps);
+        let mut reloads = reloads.into_iter();
+        run(
+            &mut panel,
+            legacy_clock(),
+            Mode::Clock,
+            config,
+            move || Ok(reloads.next().expect("a scripted reload")),
+            &clock,
+            &mut wait,
+            &mut fetch,
+        )
+        .unwrap();
+        (panel, fetch)
+    }
+
+    /// The frame of the `page` scene with `data`, from `start`, at `now`.
+    fn page_frame(page: PageName, data: &PageData, start: &str, now: &str) -> Frame {
+        let mut scene = PageScene::new(page, data, ts(start), 64, Schedule::legacy());
+        let mut f = Frame::new(64, 32);
+        scene.render(&ts(now).to_zoned(TimeZone::UTC), &mut f);
+        f
+    }
+
+    fn outdoor_data() -> PageData {
+        PageData::Reading(Some(Reading {
+            time: ts("1970-01-01T00:00:00Z"),
+            temp_f: 41.51,
+            humidity: 92.15,
+            p25: 5.02,
+            p10: 5.86,
+        }))
+    }
+
+    #[test]
+    fn request_a_page() {
+        let (cmd, reply) = command_at(T1, page_cmd(PageName::Outdoor));
+        let (_, fetch) = run_pages(page_config(), vec![], vec![cmd]);
+        assert_eq!(reply.try_recv().unwrap(), "ok");
+        let jobs = fetch.jobs.borrow();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].page, PageName::Outdoor);
+        assert_eq!(jobs[0].url, OUTDOOR_URL);
+    }
+
+    #[test]
+    fn page_with_no_url() {
+        let (cmd, reply) = command_at(T1, page_cmd(PageName::Weather));
+        let (_, fetch) = run_pages(page_config(), vec![], vec![cmd]);
+        assert_eq!(
+            reply.try_recv().unwrap(),
+            "error: the page 'weather' has no URL in the config."
+        );
+        assert!(fetch.jobs.borrow().is_empty());
+    }
+
+    #[test]
+    fn page_names_lists_the_pages_with_a_url() {
+        let (cmd, reply) = command_at(T1, Command::PageNames);
+        run_pages(page_config(), vec![], vec![cmd]);
+        assert_eq!(reply.try_recv().unwrap(), "ok indoor outdoor");
+    }
+
+    #[test]
+    fn no_request_no_fetch() {
+        // Ten minutes of the clock, with a wake each minute.
+        let steps = (0..10).map(|_| Step::Deadline).collect();
+        let (panel, fetch) = run_pages(page_config(), vec![], steps);
+        assert!(fetch.jobs.borrow().is_empty());
+        assert!(panel.presents.len() >= 10);
+    }
+
+    #[test]
+    fn the_loop_does_not_wait() {
+        let (cmd, _r1) = command_at(T1, page_cmd(PageName::Outdoor));
+        let (status, reply) = command_at(after_t1(5000), Command::Status);
+        let (panel, _) = run_pages(page_config(), vec![], vec![cmd, status, Step::Deadline]);
+        assert!(reply.try_recv().unwrap().ends_with(" page=none"));
+        // The clock presents at the next minute, with no data.
+        let (last, _) = panel.presents.last().unwrap();
+        assert_eq!(*last, clock_frame(64, 32, "1970-01-01T00:01:00Z"));
+    }
+
+    #[test]
+    fn page_shows_when_its_data_arrives() {
+        let (cmd, _r1) = command_at(T1, page_cmd(PageName::Outdoor));
+        let data = Step::FetchedAt(after_t1(600), fetched(1, PageName::Outdoor, Ok(BODY)));
+        let (status, reply) = command_at(after_t1(1000), Command::Status);
+        let (panel, fetch) = run_pages(page_config(), vec![], vec![cmd, data, status]);
+        assert_eq!(fetch.jobs.borrow()[0].seq, 1);
+        assert!(reply.try_recv().unwrap().ends_with(" page=outdoor"));
+        let start = after_t1(600);
+        let (last, brightness) = panel.presents.last().unwrap();
+        assert_eq!(
+            *last,
+            page_frame(PageName::Outdoor, &outdoor_data(), start, start)
+        );
+        assert_eq!(*brightness, Brightness::new(25));
+        assert!(fetch.warnings.borrow().is_empty());
+    }
+
+    #[test]
+    fn page_ends_after_30_s() {
+        let (cmd, _r1) = command_at(T1, page_cmd(PageName::Outdoor));
+        let data = Step::FetchedAt(T1, fetched(1, PageName::Outdoor, Ok(BODY)));
+        let (panel, _) = run_pages(page_config(), vec![], vec![cmd, data, Step::Deadline]);
+        let (last, _) = panel.presents.last().unwrap();
+        assert_eq!(*last, clock_frame(64, 32, after_t1(30_000)));
+    }
+
+    #[test]
+    fn the_newest_request_wins() {
+        let (indoor, _r1) = command_at(T1, page_cmd(PageName::Indoor));
+        let (outdoor, _r2) = command_at(after_t1(100), page_cmd(PageName::Outdoor));
+        let old = Step::FetchedAt(after_t1(200), fetched(1, PageName::Indoor, Ok(BODY)));
+        let (s1, r1) = command_at(after_t1(300), Command::Status);
+        let new = Step::FetchedAt(after_t1(400), fetched(2, PageName::Outdoor, Ok(BODY)));
+        let (s2, r2) = command_at(after_t1(500), Command::Status);
+        let (_, fetch) = run_pages(
+            page_config(),
+            vec![],
+            vec![indoor, outdoor, old, s1, new, s2],
+        );
+        assert_eq!(fetch.jobs.borrow().len(), 2);
+        assert!(r1.try_recv().unwrap().ends_with(" page=none"));
+        assert!(r2.try_recv().unwrap().ends_with(" page=outdoor"));
+    }
+
+    #[test]
+    fn request_during_a_higher_alert() {
+        let (panic, _r1) = command_at(T1, alert("panic"));
+        let (cmd, reply) = command_at(after_t1(100), page_cmd(PageName::Outdoor));
+        let (_, fetch) = run_pages(page_config(), vec![], vec![panic, cmd]);
+        assert_eq!(
+            reply.try_recv().unwrap(),
+            "error: the page 'outdoor' did not show. The alert 'panic' on the panel has the same or a higher priority."
+        );
+        assert!(fetch.jobs.borrow().is_empty());
+    }
+
+    #[test]
+    fn data_arrives_during_a_higher_alert() {
+        let (cmd, r1) = command_at(T1, page_cmd(PageName::Outdoor));
+        let (bedtime, _r2) = command_at(after_t1(100), alert("bedtime"));
+        let data = Step::FetchedAt(after_t1(200), fetched(1, PageName::Outdoor, Ok(BODY)));
+        let (status, reply) = command_at(after_t1(300), Command::Status);
+        let (_, fetch) = run_pages(page_config(), vec![], vec![cmd, bedtime, data, status]);
+        assert_eq!(r1.try_recv().unwrap(), "ok");
+        assert!(
+            reply
+                .try_recv()
+                .unwrap()
+                .ends_with(" alert=bedtime page=none")
+        );
+        assert_eq!(
+            *fetch.warnings.borrow(),
+            [
+                "gameclockd: the page 'outdoor' did not show. The alert 'bedtime' on the panel has the same or a higher priority."
+            ]
+        );
+    }
+
+    #[test]
+    fn fetch_fails() {
+        let (cmd, _r1) = command_at(T1, page_cmd(PageName::Outdoor));
+        let data = Step::FetchedAt(
+            after_t1(600),
+            fetched(1, PageName::Outdoor, Err("curl: (7) Failed to connect")),
+        );
+        let (status, reply) = command_at(after_t1(700), Command::Status);
+        let (panel, fetch) = run_pages(page_config(), vec![], vec![cmd, data, status]);
+        assert!(reply.try_recv().unwrap().ends_with(" page=outdoor"));
+        let start = after_t1(600);
+        let (last, _) = panel.presents.last().unwrap();
+        assert_eq!(
+            *last,
+            page_frame(PageName::Outdoor, &PageData::Reading(None), start, start)
+        );
+        assert_eq!(
+            *fetch.warnings.borrow(),
+            ["gameclockd: the page 'outdoor' has no data: curl: (7) Failed to connect."]
+        );
+    }
+
+    #[test]
+    fn body_is_not_json() {
+        let text = format!("[pages]\nweather = \"{WEATHER_URL}\"\n");
+        let config = crate::config::parse("test", &text).unwrap();
+        let (cmd, _r1) = command_at(T1, page_cmd(PageName::Weather));
+        let data = Step::FetchedAt(after_t1(600), fetched(1, PageName::Weather, Ok("<html>")));
+        let (panel, fetch) = run_pages(config, vec![], vec![cmd, data]);
+        let start = after_t1(600);
+        let (last, _) = panel.presents.last().unwrap();
+        assert_eq!(
+            *last,
+            page_frame(PageName::Weather, &PageData::Forecast(None), start, start)
+        );
+        let warnings = fetch.warnings.borrow();
+        assert_eq!(warnings.len(), 1);
+        assert!(
+            warnings[0].starts_with("gameclockd: the page 'weather' has no data:"),
+            "{warnings:?}"
+        );
+    }
+
+    #[test]
+    fn old_reading_gives_a_warning() {
+        // The reading is from 1970-01-01T00:00:00Z, and the data arrives 20 min later.
+        let (cmd, _r1) = command_at(T1, page_cmd(PageName::Indoor));
+        let data = Step::FetchedAt(
+            "1970-01-01T00:20:00Z",
+            fetched(1, PageName::Indoor, Ok(BODY)),
+        );
+        let (_, fetch) = run_pages(page_config(), vec![], vec![cmd, data]);
+        assert_eq!(
+            *fetch.warnings.borrow(),
+            ["gameclockd: the page 'indoor' has no data: the reading is 20 min old."]
+        );
+    }
+
+    #[test]
+    fn reload_changes_the_urls() {
+        let text = format!("[pages]\nweather = \"{WEATHER_URL}\"\n");
+        let new = crate::config::parse("test", &text).unwrap();
+        let (reload, r1) = command_at(T1, Command::Reload);
+        let (cmd, r2) = command_at(after_t1(100), page_cmd(PageName::Weather));
+        let (old, r3) = command_at(after_t1(200), page_cmd(PageName::Outdoor));
+        let (_, fetch) = run_pages(page_config(), vec![new], vec![reload, cmd, old]);
+        assert_eq!(r1.try_recv().unwrap(), "ok");
+        assert_eq!(r2.try_recv().unwrap(), "ok");
+        assert_eq!(
+            r3.try_recv().unwrap(),
+            "error: the page 'outdoor' has no URL in the config."
+        );
+        assert_eq!(fetch.jobs.borrow()[0].url, WEATHER_URL);
     }
 }

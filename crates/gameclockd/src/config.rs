@@ -538,6 +538,17 @@ pub struct Loaded {
     pub note: Option<String>,
 }
 
+impl Loaded {
+    /// The values of the load, without the note.
+    #[must_use]
+    pub fn into_config(self) -> Config {
+        Config {
+            tables: self.tables,
+            pages: self.pages,
+        }
+    }
+}
+
 /// Read the file at `path` and give its tables.
 ///
 /// # Errors

@@ -31,8 +31,8 @@
 
 - [x] 6.1 Red: write `parse_command` tests for `page outdoor`, `page`, and `page garage`, and the new "Unknown command" reply. Write `status_reply` tests for all the status scenarios with `page=`. See them fail.
 - [x] 6.2 Green: add `Command::Page`, `Command::PageNames`, the errors, and `page=` in `status_reply` (D7). Verify that the 6.1 tests pass.
-- [ ] 6.3 Red: write `run` tests with a `RecordingFetch` and a `ScriptedWait` step that returns `Wake::Fetched` (D2). Write "Request a page", "Page with no URL", "No request, no fetch", and "The loop does not wait". Write "The newest request wins", "Request during a higher alert", and "Data arrives during a higher alert". Write "Fetch fails" (the stderr line), "Body is not JSON", "Status during a page", and "Reload changes the URLs". See them fail.
-- [ ] 6.4 Green: add the `Fetch` trait, `Wake::Fetched`, `Event::Fetched`, the `seq` and `pending` state, and the parse of both JSON forms in a daemon `pages` module with `serde_json` (D1–D4). Add `serde_json` to the workspace. Verify that the 6.3 tests pass and that `cargo deny check` passes.
+- [x] 6.3 Red: write `run` tests with a `RecordingFetch` and a `ScriptedWait` step that returns `Wake::Fetched` (D2). Write "Request a page", "Page with no URL", "No request, no fetch", and "The loop does not wait". Write "The newest request wins", "Request during a higher alert", and "Data arrives during a higher alert". Write "Fetch fails" (the stderr line), "Body is not JSON", "Status during a page", and "Reload changes the URLs". See them fail.
+- [x] 6.4 Green: add the `Fetch` trait, `Wake::Fetched`, `Event::Fetched`, the `seq` and `pending` state, and the parse of both JSON forms in a daemon `pages` module with `serde_json` (D1–D4). Add `serde_json` to the workspace. Verify that the 6.3 tests pass and that `cargo deny check` passes.
 
 ## 7. The fetch thread (`sensor-pages`)
 

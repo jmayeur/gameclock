@@ -28,6 +28,8 @@ jiff = { version = "0.2.42", default-features = false, features = ["std"] }
 # the daemon reads the file and never writes it.
 serde = { version = "1.0.229", features = ["derive"] }
 toml = { version = "1.2.1", default-features = false, features = ["std", "serde", "parse"] }
+# The JSON of the page data, read only in gameclockd (docs/adr/0021).
+serde_json = "1.0.154"
 # Test only: counts heap allocations (docs/adr/0012).
 allocation-counter = "0.8.1"
 
