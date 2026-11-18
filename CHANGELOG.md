@@ -156,3 +156,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
   commands and skills, plus a project `openspec/config.yaml` that encodes the
   ADR, design-doc, performance, and license rules. CI runs
   `openspec validate --all --strict`.
+
+### Deprecated
+
+- The legacy Python clock (`clock.svc.service`), its Node page, PM2, and
+  nginx. On 2026-11-16, `scripts/deploy.sh --enable` made `gameclockd` the
+  boot service on the Pi. The legacy services are disabled at boot. Their
+  files stay on the Pi for `--rollback`.
+

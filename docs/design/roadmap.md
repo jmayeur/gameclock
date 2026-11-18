@@ -57,6 +57,10 @@ and scope can change. Update this file when a change merges or a plan changes.
    The deploy stops nginx, PM2, and Node, and the Pi gets back about 106 MB
    of RSS (ADR-0020).
 
+   **Cutover, 2026-11-16:** `gameclockd` is the boot service on the Pi. The
+   legacy Python clock, nginx, PM2, and Node are deprecated. They are
+   disabled at boot, and their files stay on the Pi for `--rollback`.
+
 ## Data on the panel
 
 10. **`sensor-pages`**: **done**. The web page has Weather, Indoor, and
@@ -68,8 +72,9 @@ and scope can change. Update this file when a change merges or a plan changes.
 
 ## Later candidates
 
-- Remove nginx, PM2, and Node from the Pi after some weeks of use. The
-  rollback needs them until then.
+- Remove the deprecated legacy stack from the Pi after some weeks of use:
+  the Python clock, nginx, PM2, and Node. The rollback needs them until then.
+  The removal is an OpenSpec change, because it ends `--rollback`.
 - `text-fonts`: fonts chosen by name, and a renderer for proportional
   fonts. Fun fonts for alerts and messages, for example from the
   `u8g2-fonts` crate. The legacy `7x13B` font is already in use. Only
