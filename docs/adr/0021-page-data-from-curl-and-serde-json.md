@@ -70,7 +70,7 @@ A fetch happens only when a person presses a button, so the rate is low.
 ## Alternatives considered
 
 - **`rustls` with `ring` or `aws-lc-rs`.** The license is not permitted by
-  ADR-0003, and the cross build for ARMv6 gets larger and slower.
+  ADR-0003, and the cross build for ARMv6 becomes larger and slower.
 - **`rustls` with a pure-Rust crypto provider.** Less mature, and a large
   dependency tree for three URLs.
 - **Link `libcurl` or OpenSSL.** It adds FFI and `unsafe` outside the driver

@@ -7,6 +7,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Added
 
+- Data pages (OpenSpec `sensor-pages`, ADR-0021):
+  - `gameclock-core`: the `page` module. `PageName`, `Reading`,
+    `Forecast`, `PageData`, the US EPA AQI from PM2.5 and PM10 with its
+    category colors, and `PageScene`, which shows for 30 s. The board shows
+    a page above a message and below `bedtime`.
+  - `gameclockd`: the `page <name>` command for `weather`, `indoor`, and
+    `outdoor`. The `fetch` thread runs the system `curl` for each request.
+    The `pages` module parses the JSON with `serde_json`. Only the newest
+    request shows. Bad or old data shows dashes and a warning.
+  - A `[pages]` config section with the URL of each page. There are no
+    built-in URLs.
+  - The web page has a button for each page with a URL, which posts to
+    `/page`.
+  - New dependency `serde_json`.
+
 - Web page (OpenSpec `web-control`, ADR-0020):
   - `gameclockd`: the `http` module (a small HTTP/1.1 parser with limits)
     and the `web` module (the routes, the forms, the page, and the `web`
@@ -92,6 +107,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning:
 
 ### Changed
 
+- **The `status` reply ends with `page=<name>` or `page=none`.** The
+  unknown-command reply names eight commands. Before a rollback to an older
+  `gameclockd`, remove the `[pages]` section from the config. An older
+  daemon refuses it and does not start (OpenSpec `sensor-pages`).
 - Alerts are owned data in an `Alerts` table, shared with `Rc`. `BUILT_IN`
   and `alert::find` are gone. The loop looks up alert names, so the alert
   error replies list the current table. The unknown-command reply names

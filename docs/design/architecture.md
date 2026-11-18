@@ -1,6 +1,6 @@
 # Architecture
 
-> The state after `web-control`. Sections marked **Planned** give the agreed
+> The state after `sensor-pages`. Sections marked **Planned** give the agreed
 > direction (ADRs 0004–0006). They become current as OpenSpec changes merge.
 
 ## Shape
@@ -12,8 +12,9 @@
                 │        │                ▲ event channel                        │
   commands  ───▶│ control thread ─────────┤                                      │
   (Unix socket) │ web thread ─────────────┤                                      │
-  web page  ───▶│ signals thread ─────────┘                                      │
-  (HTTP, :80)   │                                                                │
+  web page  ───▶│ signals thread ─────────┤                                      │
+  (HTTP, :80)   │ fetch thread ───────────┘ ◀── jobs from the loop               │
+  page data ◀──▶│   curl: sensor Pis, NWS (only on a page request)               │
   signals   ───▶│        ▼                                                       │
                 │   gameclock-core (pure) ──renders──▶ Frame ──changed?──▶ Panel ──┼──▶ LED matrix
                 │   scenes · schedule ·                (64×32 RGB)          .present│
@@ -126,16 +127,29 @@
   the next fire time of each rule. `due(now)` gives each alert that is due,
   one for each rule, and `next()` gives the earliest next fire time.
 - **`Board`** (`gameclock_core::board`, ADR-0018): the message queue and the
-  item on the panel (nothing, a message, or an alert). It changes the
+  item on the panel (nothing, a message, an alert, or a page). It changes the
   compositor stack, which holds at most one foreground scene. An alert starts
-  only above a lower priority: the base scene, `bed-flash`, a message,
-  `bedtime`, then `panic`. An interrupted message goes back to the front of
-  the queue. `clear` keeps an alert whose rule is `Kept`. `set_schedule`
-  gives the schedule for new scenes.
+  only above a lower priority: the base scene, `bed-flash`, a message, a
+  page, `bedtime`, then `panic`. A page shows unless an alert of its priority
+  or higher shows (`page_blocker`), and a new page replaces a page. An
+  interrupted message goes back to the front of the queue. An interrupted
+  page does not come back. `clear` removes a page, and keeps an alert whose
+  rule is `Kept`. `set_schedule` gives the schedule for new scenes.
+- **`page`** (`gameclock_core::page`, ADR-0021): `PageName` (`weather`,
+  `indoor`, `outdoor`) and the page values: `Reading`, `Forecast`, `Period`,
+  and `PageData`. `page_text` gives the lines of a page at a time. A reading
+  older than 15 min, or no current forecast period, gives dashes. `aqi` gives
+  the US EPA AQI from PM2.5 and PM10 (the 2024 breakpoints), and
+  `aqi_color` gives its category color. `PageScene` makes its lines once and
+  ends 30 s after its start. A sensor page has three lines in the 6×10 font.
+  The weather page has two lines in the 7×13 bold font. Its forecast text
+  scrolls with the message `ScrollPath` if it is wider than the panel.
 - **`Tables`** (`gameclock_core::tables`, ADR-0019): the schedule, the alert
   table, and the trigger rules. `Tables::legacy()` is the built-in set.
 - **`config`** (`gameclockd`, ADR-0019): `parse` turns the TOML text into
-  `Tables`. serde types with `deny_unknown_fields` mirror the file, and each
+  a `Config`: the `Tables` and the `PageUrls` of the `[pages]` section
+  (ADR-0021). A page URL must be HTTP or HTTPS, 256 characters or fewer,
+  with no spaces. serde types with `deny_unknown_fields` mirror the file, and each
   value keeps its byte range. The core types check the ranges. A
   `ConfigError` gives `<path>:<line>:<column>: <message>`. A section that is
   not in the file uses its built-in table. `load` reads the file. A missing
@@ -146,17 +160,31 @@
 - **`Clock`, `Wait`** (`gameclockd`, ADR-0013, ADR-0016): the injected time
   source and the wait. `SystemClock` gives the system time in the time zone
   from startup. `ChannelWait` waits on the event channel with a timeout until
-  the deadline. It gives `Deadline`, `Shutdown`, or `Command`. Tests use a
-  fake clock and a scripted wait.
+  the deadline. It gives `Deadline`, `Shutdown`, `Command`, or `Fetched`.
+  Tests use a fake clock and a scripted wait.
 - **`Event`, `Request`** (`gameclockd`, ADR-0016): an event on the channel is
-  a shutdown or a command request. A request holds a `Command` and the sender
-  for its reply line.
+  a shutdown, a command request, or the result of a page fetch. A request
+  holds a `Command` and the sender for its reply line.
+- **`Fetch`, `Job`, `Fetched`** (`gameclockd`, ADR-0021): the loop starts a
+  page fetch through the `Fetch` trait and does not wait. A `Job` has a
+  sequence number, the page, and the URL. The `Fetched` event gives the body
+  or the reason of the failure. `Fetch::warn` writes a page warning to
+  stderr. Tests use a recording fetch.
+- **`fetch`** (`gameclockd`, ADR-0021): the `fetch` thread runs the system
+  `curl` for each job, with the same arguments each time and the URL after `--`. It has a
+  limit of 10 s and 256 KiB, and the `User-Agent` `gameclockd/<version>`. If
+  jobs wait, it fetches only the newest. `ChannelFetch` sends the jobs to the
+  thread.
+- **`pages`** (`gameclockd`, ADR-0021): `page_data` turns a body into
+  `PageData` with `serde_json`. A failed fetch, a body of the wrong form, or
+  a reading older than 15 min gives dashes and a reason for the warning.
 - **`command`** (`gameclockd`): `parse_command` turns a line into a
   `Command` (`clock`, `test-pattern`, `status`, `message`, `clear`, `alert`,
-  or `reload`) or a `CommandError`. The first word selects the command.
+  `page`, or `reload`) or a `CommandError`. The first word selects the command.
   `message` reads its `--passes` and `--color` options, then takes the rest
   of the line as the text. `alert` takes a name or `stop`. The loop looks up
-  the name, because `reload` can change the alert table. The reply text comes from pure functions.
+  the name, because `reload` can change the alert table. `page` takes
+  `weather`, `indoor`, or `outdoor`. The reply text comes from pure functions.
 - **`control`** (`gameclockd`): `listen` makes the socket (mode 0600, a
   stale file is replaced, a live socket is not taken). The `control` thread
   accepts one connection at a time. It gives each client 1 s for its line and
@@ -168,9 +196,11 @@
   Each response closes the connection.
 - **`web`** (`gameclockd`, ADR-0020): `route` gives the response to a
   request. It sends the same `Command`s as the socket through an `ask`
-  function. The page asks the loop for the status and for the alert names
-  (`Command::AlertNames`, which the socket parser cannot make). A post with
-  an `Origin` of a different host gets 403. The `web` thread accepts one
+  function. The page asks the loop for the status, the alert names, and the
+  names of the pages with a URL. The socket parser cannot make the last two
+  commands (`Command::AlertNames` and `Command::PageNames`). It shows one
+  button for each of those pages, which posts to `/page`. A post with
+  an `Origin` of a different host receives 403. The `web` thread accepts one
   connection at a time. It gives each client 2 s for the whole request and
   2 s to read the response. Then it discards the rest of the request for
   500 ms at most.
@@ -203,10 +233,13 @@
    the socket (default `/run/gameclockd/control.sock`) and starts the
    `control` thread. If it cannot, it writes a warning and runs with no
    command input.
-5. **Web page.** While the process is still root, the daemon listens for
+5. **Fetch thread.** The daemon starts the `fetch` thread. If it cannot,
+   it writes a warning, and each page request gives a page with dashes
+   (ADR-0021).
+6. **Web page.** While the process is still root, the daemon listens for
    HTTP on the web address, starts the `web` thread, and writes the address.
    If it cannot, it writes a warning and runs with no web page (ADR-0020).
-6. **Panel, selected at build time.** There are three builds:
+7. **Panel, selected at build time.** There are three builds:
    - `hzeller` (the Pi build, `scripts/build-pi.sh`): `HzellerPanel::new`
      receives the flags.
    - `simulator` (`cargo sim`): `TerminalPanel` draws on stdout.
@@ -214,9 +247,9 @@
 
    Without `hzeller`, the daemon ignores `--led-*` flags with a notice. A
    build with `hzeller` and `simulator` together stops with a compile error.
-7. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
+8. **Run.** `run` puts the base scene in a panel-sized `Compositor`, next to
    a `Board` and the `Triggers` of the config tables. Then it loops:
-   1. It gets the time from the clock. The board removes the finished
+   1. It reads the time from the clock. The board removes the finished
       scenes. If nothing shows, it starts the first message of the queue as
       a `Scroll` at that time. So the next message starts at the same update
       as the finish of the last one.
@@ -230,7 +263,8 @@
       shows on the panel before the reply.
       - `clock` and `test-pattern` replace the base scene.
       - `status` gives the mode, the zone name, the last brightness, the
-        number of messages, and the alert on the panel.
+        number of messages, the alert on the panel, and the page on the
+        panel.
       - `message` starts the message, or puts it in the queue. A full queue
         gives an error reply.
       - `clear` empties the queue and removes the message, or an alert that
@@ -238,12 +272,19 @@
       - `alert <name>` starts the alert, or gives an error reply if the item
         on the panel has the same or a higher priority. `alert stop` removes
         the alert.
+      - `page <name>` starts a fetch of the page URL and replies `ok` at
+        once. It gives an error reply if the page has no URL, or if an alert
+        of the page priority or higher shows.
       - `reload` reads the config file again. A correct file gives new
-        tables. New scenes use the new schedule and alerts. The triggers
-        start again from now, and the clock gets the new schedule. The scene
+        tables and page URLs. New scenes use the new schedule and alerts. The triggers
+        start again from now, and the clock uses the new schedule. The scene
         on the panel continues. A file with an error gives an error reply,
         and the tables do not change.
-8. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
+   6. For the result of a page fetch, it shows the page for 30 s, but only
+      for the newest request. A failed fetch or bad data gives a page with
+      dashes and a warning on stderr. If an alert of the page priority or
+      higher shows, the page does not show, and the loop writes a warning.
+9. **Shutdown.** On a signal, the panel drops, the daemon removes the socket
    file, and the process exits 0. hzeller stops its refresh thread and
    blanks the LEDs. A panel error exits 1 with the message on stderr.
 
@@ -264,13 +305,13 @@ on the Pi, so the rollback starts it with no wait (ADR-0020).
 ## Data flow
 
 1. The loop wakes at a deadline: the next visual change or the next trigger
-   time. It also wakes on a command from the socket or the web page, and on
-   a stop signal.
+   time. It also wakes on a command from the socket or the web page, on the
+   result of a page fetch, and on a stop signal.
 2. It gives the injected time to the compositor. The compositor renders the
    top scene into a `Frame`.
 3. If the frame or the brightness is different from the last presented
    ones, the loop calls `panel.present(frame, brightness)`.
-4. It gets the next deadline from the compositor and the triggers, and
+4. It takes the next deadline from the compositor and the triggers, and
    waits.
 
 The wait uses a duration. When the system clock steps (for example at the
@@ -281,8 +322,8 @@ first NTP sync), the wake can be late by up to one interval (ADR-0013).
 A **scene** is a self-contained renderer with its own state. It reports when
 it next changes and when it finishes. It also gives its brightness
 (ADR-0012, ADR-0014). The daemon has one base scene: the clock, or the
-heartbeat in the test-pattern mode. A message or an alert is a foreground
-scene. At most one foreground scene is on the stack. The board decides which
+heartbeat in the test-pattern mode. A message, an alert, or a page is a
+foreground scene. At most one foreground scene is on the stack. The board decides which
 one, and the other messages wait in its queue (ADR-0017, ADR-0018).
 
 The **compositor** decides what is visible: the base scene, or the newest

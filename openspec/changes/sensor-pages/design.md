@@ -75,7 +75,8 @@ sufficient, because a server can send a body with no length.
 
 ### 2. A `Fetch` trait for tests
 
-`run` takes a `&mut dyn Fetch` with one method, `start(job)`. The daemon
+`run` takes a `&mut impl Fetch` with two methods: `start(job)`, and
+`warn(line)` for the warning lines on stderr. The daemon
 gives a `ChannelFetch` that sends to the `fetch` thread. Tests give a
 `RecordingFetch` that keeps the jobs. `ScriptedWait` has a new step that
 returns `Wake::Fetched`, so a test sets the time and the body of each
@@ -120,7 +121,8 @@ the choice of the current period. Each page scene starts from `PageData::{Readin
     second line has its top at y = 17. It is centered if it fits, or it
     scrolls with the `ScrollPath` math of messages.
   - `next_change`: the end time for a still page, and the next 40 ms step
-    for a scrolling page. The compositor already wakes at schedule changes.
+    for a scrolling page. A schedule change during a still page shows at its
+    next render. That is 30 s later at most.
 - These layouts must be checked in `cargo sim` before the review. The
   positions can change with no change to the specs.
 

@@ -36,7 +36,7 @@
 
 ## 7. The fetch thread (`sensor-pages`)
 
-- [x] 7.1 Red: write `fetch` tests against a local test HTTP server on `127.0.0.1:0` in the test: a good body and "Slow server" (no response for 10 s). Write "Body too large" (300 KiB with no length), a 404, and "User-Agent". Test that the URL goes after `--`. See them fail.
+- [x] 7.1 Red: write `fetch` tests. Use a local test HTTP server on `127.0.0.1:0` in the test. Write a good body and "Slow server" (no response for 10 s). Write "Body too large" (300 KiB with no length), a 404, and "User-Agent". Test that the URL goes after `--`. See them fail.
 - [x] 7.2 Green: add the `fetch` thread and `ChannelFetch` with the fixed `curl` arguments and the 256 KiB read limit (D1). Start the thread in `main.rs`. Verify that the 7.1 tests pass in the default and the `simulator` builds.
 
 ## 8. The web page (`web-control`)
@@ -50,7 +50,7 @@
 
 ## 10. On-device verification and measurements
 
-- [ ] 10.1 Build with `scripts/build-pi.sh`, and run `scripts/check-pi-binary.sh`. Record the binary size against `main` in `openspec/changes/sensor-pages/measurements.md`.
+- [x] 10.1 Build with `scripts/build-pi.sh`, and run `scripts/check-pi-binary.sh`. Record the binary size against `main` in `openspec/changes/sensor-pages/measurements.md`.
 - [ ] 10.2 Deploy with `scripts/deploy.sh`. Ask the user before the deploy. With approval, add the `[pages]` section with the real URLs to `/etc/gameclockd/config.toml` on the Pi, and run `sudo gameclockd ctl reload`. Verify that `curl` runs as the `daemon` user and fetches each page.
 - [ ] 10.3 Run "Refresh rate during a fetch": `scripts/measure.sh` with no requests, and then with a `page weather` request each 5 s. Record both refresh rates and the CPU. If the rate falls by more than 10%, add `nice` (design risk 1), and measure again.
 - [ ] 10.4 Run "Memory after requests": record the RSS before and after 10 page requests.

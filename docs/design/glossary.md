@@ -120,3 +120,15 @@
   port 3000. The deploy stops it, and the rollback starts it again.
 - **Semaphore file**: the legacy command channel (`msg.txt` holding
   `msg=<value>`).
+- **Page**: a still data screen that shows on the panel for 30 s when a
+  person asks for it: `weather`, `indoor`, or `outdoor`. Its priority is
+  above a message and below `bedtime` (ADR-0021).
+- **Page fetch**: the `curl` run that downloads the data of a page. It runs in the
+  `fetch` thread, and only after a `page` command.
+- **Reading**: the newest row of an enviro sensor's `realtime.json`: the
+  temperature in °F, the humidity, PM2.5, and PM10. A reading older than
+  15 min shows as dashes.
+- **AQI**: the US EPA Air Quality Index, from 0 to 500. The page shows the
+  higher of the PM2.5 and PM10 values, in the color of its category.
+- **Forecast period**: one part of the NWS forecast, for example "Tonight".
+  The weather page shows the first period that has not ended.
