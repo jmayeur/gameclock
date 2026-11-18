@@ -46,7 +46,7 @@
 
 ## 9. Simulator verification
 
-- [ ] 9.1 Run the `simulator` build with a config in the scratchpad that has the real URLs (not in the repo) and `--http=127.0.0.1:8080`. Post each page and look at the frames. Verify that the layouts fit in 64×32 and that a long forecast text scrolls. Ask the user to look at the page buttons and the frames. Record the results here, with no addresses.
+- [ ] 9.1 Run the `simulator` build with a config in the scratchpad that has the real URLs (not in the repo) and `--http=127.0.0.1:8080`. Post each page and look at the frames. Verify that the layouts fit in 64×32 and that a long forecast text scrolls. Ask the user to look at the page buttons and the frames. Record the results here, with no addresses. Result: `POST /page` gave 200 for each page. `outdoor` showed `OUT 42F`, `RH 91%`, and `AQI 28`, with the AQI in green and the other lines in the schedule color. `indoor` showed `AQI 7`. `weather` showed `41F 0%`, and its forecast text scrolled. The status line showed `Page: weather`. After 30 s, the clock came back and the status showed `Page: none`. The page had three page buttons.
 
 ## 10. On-device verification and measurements
 
@@ -58,7 +58,7 @@
 
 ## 11. Docs and final verification
 
-- [ ] 11.1 Update `architecture.md` (the `fetch` thread, the `Fetched` event, the page in the board, and the priorities) and `glossary.md` (page, reading, AQI, fetch). Update `roadmap.md` (add `sensor-pages` as done, and the font, icon, and layout items from the exploration), the README, and `CHANGELOG.md` (with the rollback note about `[pages]`). Verify with `scripts/lint-docs.sh`.
+- [x] 11.1 Update `architecture.md` (the `fetch` thread, the `Fetched` event, the page in the board, and the priorities) and `glossary.md` (page, reading, AQI, fetch). Update `roadmap.md` (add `sensor-pages` as done, and the font, icon, and layout items from the exploration), the README, and `CHANGELOG.md` (with the rollback note about `[pages]`). Verify with `scripts/lint-docs.sh`.
 - [ ] 11.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass. Run `cargo fmt` before each commit.
 - [ ] 11.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
