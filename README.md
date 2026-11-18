@@ -10,7 +10,9 @@ for one ARMv6 core.
 > scrolls a message. `sudo gameclockd ctl alert panic` shows an alert, and
 > the bedtime warning starts on its own on bedtime nights. A config file sets
 > the schedule, the alerts, and the triggers. A web page at
-> `http://<the Pi>/` sends messages and alerts from a phone. More features come
+> `http://<the Pi>/` sends messages and alerts from a phone. On the Pi,
+> `gameclockd` starts at boot. The legacy Python and Node clock is deprecated.
+> More features come
 > one at a time, through [OpenSpec](https://github.com/Fission-AI/OpenSpec). See the
 > [roadmap](docs/design/roadmap.md).
 

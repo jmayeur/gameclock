@@ -1,5 +1,9 @@
 # Legacy behavior (reference)
 
+> **Deprecated.** Since 2026-11-16, `gameclockd` is the boot service on the
+> Pi. The legacy clock, nginx, and PM2 are disabled at boot. Their files stay
+> on the Pi for `scripts/deploy.sh --rollback`.
+
 What the old Python/Node clock does, collected from `~/dev/gameclock`
 (`main/`, `v2/`, `backup/`). This is input for OpenSpec proposals, not a spec:
 each behavior is re-decided when its change is proposed. Where `main/` and `v2/`
