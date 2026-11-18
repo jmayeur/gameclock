@@ -17,6 +17,7 @@ pub mod effect;
 pub mod frame;
 pub mod heartbeat;
 pub mod message;
+pub mod page;
 pub mod panel;
 pub mod scene;
 pub mod schedule;

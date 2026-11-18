@@ -6,10 +6,10 @@
 
 ## 2. AQI and values in the core (`sensor-pages`)
 
-- [ ] 2.1 Red: write `page` module tests for "AQI values" and "Category colors", and for `PageName::parse` and `name`. See them fail because the module does not exist.
-- [ ] 2.2 Green: add `gameclock-core/src/page.rs` with `PageName`, `aqi`, `aqi_color`, and the EPA tables as `const` arrays (design D5). Verify that the 2.1 tests pass.
-- [ ] 2.3 Red: write tests for the lines of a page: "Outdoor page", "Indoor page", "Below zero", and "Old reading" (20 min old gives dashes). Write "Weather page", "No chance of rain", "Skip an old period", "No current period", and "Text that is not ASCII". Use injected times. See them fail.
-- [ ] 2.4 Green: add `Reading`, `Forecast`, `Period`, `PageData`, the 15 min age rule, and the choice of the current period (D4). Verify that the 2.3 tests pass.
+- [x] 2.1 Red: write `page` module tests for "AQI values" and "Category colors", and for `PageName::parse` and `name`. See them fail because the module does not exist.
+- [x] 2.2 Green: add `gameclock-core/src/page.rs` with `PageName`, `aqi`, `aqi_color`, and the EPA tables as `const` arrays (design D5). Verify that the 2.1 tests pass.
+- [x] 2.3 Red: write tests for the lines of a page: "Outdoor page", "Indoor page", "Below zero", and "Old reading" (20 min old gives dashes). Write "Weather page", "No chance of rain", "Skip an old period", "No current period", and "Text that is not ASCII". Use injected times. See them fail.
+- [x] 2.4 Green: add `Reading`, `Forecast`, `Period`, `PageData`, the 15 min age rule, and the choice of the current period (D4). Verify that the 2.3 tests pass.
 
 ## 3. The page scene (`sensor-pages`)
 
