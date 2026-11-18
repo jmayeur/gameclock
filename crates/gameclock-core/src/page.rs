@@ -4,8 +4,16 @@
 //! The daemon fetches and parses the data. This module gets typed values and
 //! the time, and makes the text and the scene of a page.
 
+use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_7X13_BOLD};
+use embedded_graphics::mono_font::{MonoFont, MonoTextStyle};
 use embedded_graphics::pixelcolor::Rgb888;
-use jiff::{SignedDuration, Timestamp};
+use embedded_graphics::prelude::*;
+use embedded_graphics::text::{Baseline, Text};
+use jiff::{SignedDuration, Timestamp, Zoned};
+
+use crate::message::ScrollPath;
+use crate::schedule::Schedule;
+use crate::{Brightness, Frame, Scene};
 
 /// The name of a page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -41,6 +49,9 @@ impl PageName {
 
 /// A reading of a sensor page is old after this time, and shows dashes.
 pub const MAX_AGE: SignedDuration = SignedDuration::from_mins(15);
+
+/// A page shows for this time after its data arrives.
+pub const DURATION: SignedDuration = SignedDuration::from_secs(30);
 
 /// The most characters of a forecast text.
 pub const MAX_TEXT: usize = 64;
@@ -190,6 +201,174 @@ fn whole(value: f64) -> i64 {
     let whole = value as i64;
     // `as` gives 0 for -0.0, so "-0F" cannot show.
     whole
+}
+
+/// The scene of a page. It makes its text once, when it starts, and ends
+/// [`DURATION`] after its start.
+#[derive(Debug, Clone)]
+pub struct PageScene {
+    page: PageName,
+    text: PageText,
+    end: Timestamp,
+    schedule: Schedule,
+    /// The text of the AQI value on the last line, made once.
+    aqi_value: String,
+    /// The x of the second weather line when it is still.
+    still_x: i32,
+    /// The path of the second weather line when it is too wide.
+    scroll: Option<ScrollPath>,
+}
+
+/// The small font of the sensor pages.
+const SMALL: &MonoFont<'static> = &FONT_6X10;
+
+/// The font of the weather page.
+const LARGE: &MonoFont<'static> = &FONT_7X13_BOLD;
+
+/// The top of each line of a sensor page.
+const SMALL_TOPS: [i32; 3] = [0, 11, 22];
+
+/// The top of each line of the weather page.
+const LARGE_TOPS: [i32; 2] = [1, 17];
+
+/// The x of the left side of each line.
+const LEFT: i32 = 1;
+
+/// The word before the AQI value.
+const AQI_WORD: &str = "AQI ";
+
+impl PageScene {
+    /// The scene of `page` with `data`, from `start`, on a panel `width`
+    /// pixels wide. It takes its colors and brightness from `schedule`.
+    #[must_use]
+    pub fn new(
+        page: PageName,
+        data: &PageData,
+        start: Timestamp,
+        width: usize,
+        schedule: Schedule,
+    ) -> Self {
+        let text = page_text(page, data, start);
+        let end = start.saturating_add(DURATION).unwrap_or(start);
+        let aqi_value = text.aqi.map(|v| v.to_string()).unwrap_or_default();
+        let (still_x, scroll) = match (page, text.lines.get(1)) {
+            (PageName::Weather, Some(line)) => second_line(line, start, width),
+            _ => (LEFT, None),
+        };
+        Self {
+            page,
+            text,
+            end,
+            schedule,
+            aqi_value,
+            still_x,
+            scroll,
+        }
+    }
+
+    /// The name of the page.
+    #[must_use]
+    pub fn page(&self) -> PageName {
+        self.page
+    }
+
+    fn render_reading(&self, color: Rgb888, frame: &mut Frame) {
+        for (line, top) in self.text.lines.iter().zip(SMALL_TOPS) {
+            match self.text.aqi {
+                Some(value) if line.starts_with(AQI_WORD) => {
+                    draw(AQI_WORD, SMALL, color, Point::new(LEFT, top), frame);
+                    let x = LEFT + width_of(AQI_WORD, SMALL);
+                    draw(
+                        &self.aqi_value,
+                        SMALL,
+                        aqi_color(value),
+                        Point::new(x, top),
+                        frame,
+                    );
+                }
+                _ => draw(line, SMALL, color, Point::new(LEFT, top), frame),
+            }
+        }
+    }
+
+    fn render_weather(&self, now: &Zoned, color: Rgb888, frame: &mut Frame) {
+        let [first, second] = LARGE_TOPS;
+        if let Some(line) = self.text.lines.first() {
+            draw(line, LARGE, color, Point::new(LEFT, first), frame);
+        }
+        let x = match &self.scroll {
+            Some(path) => path.x(now),
+            None => Some(self.still_x),
+        };
+        if let (Some(line), Some(x)) = (self.text.lines.get(1), x) {
+            draw(line, LARGE, color, Point::new(x, second), frame);
+        }
+    }
+}
+
+/// The still x, or the scroll path, of the second weather line.
+fn second_line(line: &str, start: Timestamp, width: usize) -> (i32, Option<ScrollPath>) {
+    let panel = i32::try_from(width).unwrap_or(i32::MAX);
+    let text = width_of(line, LARGE);
+    if text <= panel {
+        return ((panel - text) / 2, None);
+    }
+    // Enough passes to scroll until the page ends.
+    let glyph = LARGE.character_size.width + LARGE.character_spacing;
+    let chars = line.chars().count();
+    let one = ScrollPath::new(start, width, chars, glyph, 1);
+    let pass_ms = one
+        .finish()
+        .map_or(1, |end| end.duration_since(start).as_millis().max(1));
+    let passes = (DURATION.as_millis() + pass_ms - 1) / pass_ms;
+    let passes = u8::try_from(passes).unwrap_or(u8::MAX);
+    (
+        LEFT,
+        Some(ScrollPath::new(start, width, chars, glyph, passes)),
+    )
+}
+
+/// The width in pixels of `text` in `font`.
+fn width_of(text: &str, font: &MonoFont<'_>) -> i32 {
+    let glyph = font.character_size.width + font.character_spacing;
+    let chars = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
+    i32::try_from(glyph.saturating_mul(chars)).unwrap_or(i32::MAX)
+}
+
+/// Draw `text` with its top left at `at`.
+fn draw(text: &str, font: &MonoFont<'_>, color: Rgb888, at: Point, frame: &mut Frame) {
+    let style = MonoTextStyle::new(font, color);
+    match Text::with_baseline(text, at, style, Baseline::Top).draw(frame) {
+        Ok(_) => {}
+        Err(never) => match never {},
+    }
+}
+
+impl Scene for PageScene {
+    fn render(&mut self, now: &Zoned, frame: &mut Frame) {
+        let color = self.schedule.style_at(now).color;
+        match self.page {
+            PageName::Weather => self.render_weather(now, color, frame),
+            PageName::Indoor | PageName::Outdoor => self.render_reading(color, frame),
+        }
+    }
+
+    /// The next scroll step, or the end of the page.
+    fn next_change(&self, now: &Zoned) -> Option<Timestamp> {
+        if self.is_finished(now) {
+            return None;
+        }
+        let step = self.scroll.as_ref().and_then(|path| path.next_step(now));
+        Some(step.map_or(self.end, |step| step.min(self.end)))
+    }
+
+    fn is_finished(&self, now: &Zoned) -> bool {
+        now.timestamp() >= self.end
+    }
+
+    fn brightness(&self, now: &Zoned) -> Brightness {
+        self.schedule.style_at(now).brightness
+    }
 }
 
 /// The US EPA AQI for PM2.5 `p25` and PM10 `p10`, in µg/m³. It is the
@@ -418,6 +597,146 @@ mod tests {
         let long = "a".repeat(80);
         let data = forecast(vec![period(60, 48.0, 20, &long)]);
         assert_eq!(lines(PageName::Weather, &data)[1].len(), MAX_TEXT);
+    }
+
+    // The scene tests use the legacy schedule: blue at 60 at 12:00, and red
+    // at 25 at 02:00.
+    const NOON: &str = "2026-11-17T12:00:00Z";
+    const BLUE: Rgb888 = Rgb888::new(0, 0, 255);
+    const RED: Rgb888 = Rgb888::new(255, 0, 0);
+    const GREEN: Rgb888 = Rgb888::new(0, 228, 0);
+
+    fn zoned(t: Timestamp, ms: i64) -> Zoned {
+        (t + SignedDuration::from_millis(ms)).to_zoned(jiff::tz::TimeZone::UTC)
+    }
+
+    fn scene_at(page: PageName, data: &PageData, start: &str) -> (PageScene, Timestamp) {
+        let start: Timestamp = start.parse().unwrap();
+        (
+            PageScene::new(page, data, start, 64, Schedule::legacy()),
+            start,
+        )
+    }
+
+    fn render(scene: &mut PageScene, now: &Zoned) -> Frame {
+        let mut frame = Frame::new(64, 32);
+        scene.render(now, &mut frame);
+        frame
+    }
+
+    /// The colors in rows `rows` of `frame`, other than black.
+    fn colors(frame: &Frame, rows: core::ops::Range<i32>) -> Vec<Rgb888> {
+        let mut found = Vec::new();
+        for y in rows {
+            for x in 0..64 {
+                let c = frame
+                    .pixel(embedded_graphics::prelude::Point::new(x, y))
+                    .unwrap();
+                if c != Rgb888::new(0, 0, 0) && !found.contains(&c) {
+                    found.push(c);
+                }
+            }
+        }
+        found
+    }
+
+    /// The x of the leftmost lit pixel in rows `rows`.
+    fn leftmost(frame: &Frame, rows: core::ops::Range<i32>) -> Option<i32> {
+        (0..64).find(|&x| {
+            rows.clone().any(|y| {
+                frame
+                    .pixel(embedded_graphics::prelude::Point::new(x, y))
+                    .unwrap()
+                    != Rgb888::new(0, 0, 0)
+            })
+        })
+    }
+
+    fn noon_reading() -> PageData {
+        PageData::Reading(Some(Reading {
+            time: NOON.parse::<Timestamp>().unwrap() - SignedDuration::from_mins(2),
+            temp_f: 41.51,
+            humidity: 92.15,
+            p25: 5.02,
+            p10: 5.86,
+        }))
+    }
+
+    fn noon_forecast(text: &str) -> PageData {
+        let end = NOON.parse::<Timestamp>().unwrap() + SignedDuration::from_hours(6);
+        PageData::Forecast(Some(Forecast {
+            periods: vec![Period {
+                end,
+                temp_f: 48.0,
+                rain: 20,
+                text: text.to_owned(),
+            }],
+        }))
+    }
+
+    #[test]
+    fn page_ends_after_30_s() {
+        let (scene, t) = scene_at(PageName::Outdoor, &noon_reading(), NOON);
+        assert!(!scene.is_finished(&zoned(t, 29_999)));
+        assert!(scene.is_finished(&zoned(t, 30_000)));
+        assert_eq!(scene.next_change(&zoned(t, 0)), Some(t + DURATION));
+        assert_eq!(scene.page(), PageName::Outdoor);
+    }
+
+    #[test]
+    fn reading_page_has_text_and_the_aqi_color() {
+        let (mut scene, t) = scene_at(PageName::Outdoor, &noon_reading(), NOON);
+        let frame = render(&mut scene, &zoned(t, 0));
+        assert_eq!(colors(&frame, 0..22), [BLUE]);
+        assert!(colors(&frame, 22..32).contains(&BLUE), "the AQI word");
+        assert!(colors(&frame, 22..32).contains(&GREEN), "the AQI value");
+        assert_eq!(scene.brightness(&zoned(t, 0)), Brightness::new(60));
+    }
+
+    #[test]
+    fn page_at_night() {
+        let t: Timestamp = "2026-11-17T02:00:00Z".parse().unwrap();
+        let data = PageData::Reading(Some(Reading {
+            time: t,
+            temp_f: 67.79,
+            humidity: 44.26,
+            p25: 1.23,
+            p10: 1.23,
+        }));
+        let mut scene = PageScene::new(PageName::Indoor, &data, t, 64, Schedule::legacy());
+        let frame = render(&mut scene, &zoned(t, 0));
+        assert_eq!(scene.brightness(&zoned(t, 0)), Brightness::new(25));
+        assert_eq!(colors(&frame, 0..22), [RED]);
+    }
+
+    #[test]
+    fn short_text_is_still() {
+        let (mut scene, t) = scene_at(PageName::Weather, &noon_forecast("Rain"), NOON);
+        let first = render(&mut scene, &zoned(t, 1000));
+        assert!(!colors(&first, 17..32).is_empty(), "the text shows");
+        assert_eq!(first, render(&mut scene, &zoned(t, 20_000)));
+        assert_eq!(scene.next_change(&zoned(t, 1000)), Some(t + DURATION));
+    }
+
+    #[test]
+    fn long_text_scrolls() {
+        let text = "Chance Rain Showers then Mostly Cloudy";
+        let (mut scene, t) = scene_at(PageName::Weather, &noon_forecast(text), NOON);
+        let a = leftmost(&render(&mut scene, &zoned(t, 1000)), 17..32).unwrap();
+        let b = leftmost(&render(&mut scene, &zoned(t, 1400)), 17..32).unwrap();
+        assert_eq!(a - b, 10);
+        // The first line does not move.
+        assert_eq!(
+            colors(&render(&mut scene, &zoned(t, 1000)), 0..16),
+            colors(&render(&mut scene, &zoned(t, 1400)), 0..16),
+        );
+        assert_eq!(
+            scene.next_change(&zoned(t, 1000)),
+            Some(t + SignedDuration::from_millis(1040))
+        );
+        // The text continues until the page ends.
+        assert!(leftmost(&render(&mut scene, &zoned(t, 29_000)), 17..32).is_some());
+        assert_eq!(scene.next_change(&zoned(t, 29_990)), Some(t + DURATION));
     }
 
     #[test]

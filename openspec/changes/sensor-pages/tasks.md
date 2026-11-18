@@ -13,8 +13,8 @@
 
 ## 3. The page scene (`sensor-pages`)
 
-- [ ] 3.1 Red: write `PageScene` tests: "Page ends after 30 s", "Short text is still", and "Long text scrolls" (10 px in 400 ms). Write "Page at night" (brightness 25, red lines), and the AQI color in the frame. Write a test that `update` allocates no heap memory, with `allocation-counter`. See them fail.
-- [ ] 3.2 Green: add `PageScene` with the two layouts and `next_change` (D5). Verify that the 3.1 tests pass.
+- [x] 3.1 Red: write `PageScene` tests: "Page ends after 30 s", "Short text is still", and "Long text scrolls" (10 px in 400 ms). Write "Page at night" (brightness 25, red lines), and the AQI color in the frame. Write a test that `update` allocates no heap memory, with `allocation-counter`. See them fail.
+- [x] 3.2 Green: add `PageScene` with the two layouts and `next_change` (D5). Verify that the 3.1 tests pass.
 
 ## 4. The board (`sensor-pages`, `alerts`)
 
