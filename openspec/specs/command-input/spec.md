@@ -45,7 +45,7 @@ line and then close the connection. A reply starts with `ok` or with
 
 #### Scenario: Unknown command
 - **WHEN** a client sends `frobnicate`
-- **THEN** the reply is `error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, and reload.`
+- **THEN** the reply is `error: unknown command 'frobnicate'. The commands are clock, test-pattern, status, message, clear, alert, page, and reload.`
 
 #### Scenario: Line too long
 - **WHEN** a client sends 300 bytes with no line feed
@@ -104,27 +104,32 @@ NOT replace the scene.
 
 ### Requirement: Status gives the state of the daemon
 The command `status` SHALL get the reply `ok mode=<mode> zone=<zone>
-brightness=<percent> messages=<count> alert=<alert>`. The mode is `clock` or
+brightness=<percent> messages=<count> alert=<alert> page=<page>`. The mode is `clock` or
 `test-pattern`. The zone is the IANA name of the time zone, or `unnamed` for a
 zone with no name. The brightness is the brightness of the last present. The
 count is the number of messages on the panel and in the queue. The alert is
-the name of the alert on the panel, or `none`.
+the name of the alert on the panel, or `none`. The page is the name of the
+page on the panel, or `none`.
 
 #### Scenario: Status of the clock
 - **WHEN** the daemon shows the legacy clock in UTC at 1970-01-01T00:00:00.250Z, and a `status` command arrives
-- **THEN** the reply is `ok mode=clock zone=UTC brightness=25 messages=0 alert=none`
+- **THEN** the reply is `ok mode=clock zone=UTC brightness=25 messages=0 alert=none page=none`
 
 #### Scenario: Status of the test pattern
 - **WHEN** the daemon shows the heartbeat in UTC, and a `status` command arrives
-- **THEN** the reply is `ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none`
+- **THEN** the reply is `ok mode=test-pattern zone=UTC brightness=100 messages=0 alert=none page=none`
 
 #### Scenario: Status during a message
 - **WHEN** one message scrolls, two messages wait, and a `status` command arrives
-- **THEN** the reply ends with `messages=3 alert=none`
+- **THEN** the reply ends with `messages=3 alert=none page=none`
 
 #### Scenario: Status during an alert
 - **WHEN** `panic` interrupts a message, one other message waits, and a `status` command arrives
-- **THEN** the reply ends with `messages=2 alert=panic`
+- **THEN** the reply ends with `messages=2 alert=panic page=none`
+
+#### Scenario: Status during a page
+- **WHEN** the `outdoor` page shows, one message waits, and a `status` command arrives
+- **THEN** the reply ends with `messages=1 alert=none page=outdoor`
 
 ### Requirement: The ctl client sends one command
 `gameclockd ctl <command>` SHALL send the command to the control socket and

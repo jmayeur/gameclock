@@ -110,7 +110,7 @@ for the current time.
 
 ### Requirement: An alert starts only above a lower priority
 The priorities, from low to high, SHALL be: the base scene, `bed-flash`, a
-message, `bedtime`, and `panic`. An alert SHALL start only if its priority is
+message, a page, `bedtime`, and `panic`. An alert SHALL start only if its priority is
 higher than the priority of the item on the panel. The daemon SHALL present
 the first frame of a started alert before it replies `ok`.
 
@@ -136,6 +136,15 @@ the first frame of a started alert before it replies `ok`.
 - **WHEN** `bedtime` started at time T, and `alert bedtime` arrives at T + 5 s
 - **THEN** the reply is `ok`
 - **AND** the frame at T + 6 s is the same as when no second command arrived
+
+#### Scenario: Bed-flash does not interrupt a page
+- **WHEN** the `outdoor` page shows, and `alert bed-flash` arrives
+- **THEN** the reply is `error: the alert 'bed-flash' did not start. A page on the panel has the same or a higher priority.`
+
+#### Scenario: Bedtime interrupts a page
+- **WHEN** the `indoor` page shows, and `alert bedtime` arrives
+- **THEN** the reply is `ok`, and `bedtime` shows
+- **AND** the clock shows after `bedtime` finishes, not the page
 
 ### Requirement: The alert command
 The command `alert <name>` SHALL start the named alert. The command `alert
