@@ -41,8 +41,8 @@
 
 ## 8. The web page (`web-control`)
 
-- [ ] 8.1 Red: write `route` tests: "Page buttons from the config", "No pages in the config", and "Request a page". Write "Unknown page from the form", and "Page shows the status" with `page=`. Change the fake loop of the web tests to answer `PageNames`. See them fail.
-- [ ] 8.2 Green: add `POST /page`, the page buttons, and `page` in the status line (D7). Verify that the 8.1 tests and all web tests pass.
+- [x] 8.1 Red: write `route` tests: "Page buttons from the config", "No pages in the config", and "Request a page". Write "Unknown page from the form", and "Page shows the status" with `page=`. Change the fake loop of the web tests to answer `PageNames`. See them fail.
+- [x] 8.2 Green: add `POST /page`, the page buttons, and `page` in the status line (D7). Verify that the 8.1 tests and all web tests pass.
 
 ## 9. Simulator verification
 
