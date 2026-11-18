@@ -59,7 +59,7 @@
 ## 11. Docs and final verification
 
 - [x] 11.1 Update `architecture.md` (the `fetch` thread, the `Fetched` event, the page in the board, and the priorities) and `glossary.md` (page, reading, AQI, fetch). Update `roadmap.md` (add `sensor-pages` as done, and the font, icon, and layout items from the exploration), the README, and `CHANGELOG.md` (with the rollback note about `[pages]`). Verify with `scripts/lint-docs.sh`.
-- [ ] 11.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass. Run `cargo fmt` before each commit.
+- [x] 11.2 Run `cargo fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, the clippy and test runs with `--features simulator`, `cargo test`, `cargo deny check`, `scripts/clippy-pi.sh`, `openspec validate --all --strict`, and `scripts/lint-docs.sh`. All must pass. Run `cargo fmt` before each commit.
 - [ ] 11.3 Push the branch, open the PR, and verify that all CI jobs pass.
 
 ## Workflow follow-up
