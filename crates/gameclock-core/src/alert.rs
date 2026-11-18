@@ -26,6 +26,8 @@ impl Priority {
     pub const BASE: Self = Self(0);
     /// The priority of a message.
     pub const MESSAGE: Self = Self(20);
+    /// The priority of a page (`openspec/specs/sensor-pages`).
+    pub const PAGE: Self = Self(25);
 }
 
 /// What an alert draws below its text.

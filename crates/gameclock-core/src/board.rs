@@ -14,6 +14,7 @@ use jiff::Zoned;
 use crate::Compositor;
 use crate::alert::{Alert, AlertScene, ClearRule, Priority};
 use crate::message::{Message, Queue, QueueFull, Scroll};
+use crate::page::{PageName, PageScene};
 use crate::schedule::Schedule;
 
 /// The item on the panel above the base scene.
@@ -22,15 +23,29 @@ enum Showing {
     Nothing,
     Message(Message),
     Alert(Rc<Alert>),
+    Page(PageName),
 }
 
-/// What blocked an alert.
+/// What blocked an alert or a page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Blocker {
     /// A message is on the panel.
     Message,
     /// This alert is on the panel.
     Alert(Rc<Alert>),
+    /// A page is on the panel.
+    Page,
+}
+
+impl fmt::Display for Blocker {
+    /// The start of the sentence that names the item on the panel.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Message => f.write_str("A message"),
+            Self::Alert(by) => write!(f, "The alert '{}'", by.name),
+            Self::Page => f.write_str("A page"),
+        }
+    }
 }
 
 /// An alert did not start, because the item on the panel has the same or a
@@ -45,16 +60,38 @@ pub struct Refused {
 
 impl fmt::Display for Refused {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "the alert '{}' did not start. ", self.alert.name)?;
-        match &self.by {
-            Blocker::Message => f.write_str("A message")?,
-            Blocker::Alert(by) => write!(f, "The alert '{}'", by.name)?,
-        }
-        f.write_str(" on the panel has the same or a higher priority.")
+        write!(
+            f,
+            "the alert '{}' did not start. {} on the panel has the same or a higher priority.",
+            self.alert.name, self.by
+        )
     }
 }
 
 impl std::error::Error for Refused {}
+
+/// A page did not show, because the alert on the panel has the same or a
+/// higher priority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageRefused {
+    /// The page that did not show.
+    pub page: PageName,
+    /// The item on the panel.
+    pub by: Blocker,
+}
+
+impl fmt::Display for PageRefused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "the page '{}' did not show. {} on the panel has the same or a higher priority.",
+            self.page.name(),
+            self.by
+        )
+    }
+}
+
+impl std::error::Error for PageRefused {}
 
 /// Decides which message or alert shows on top of the base scene.
 #[derive(Debug, Clone)]
@@ -139,6 +176,7 @@ impl Board {
         let (priority, by) = match &self.showing {
             Showing::Nothing => (Priority::BASE, None),
             Showing::Message(_) => (Priority::MESSAGE, Some(Blocker::Message)),
+            Showing::Page(_) => (Priority::PAGE, Some(Blocker::Page)),
             Showing::Alert(shown) if shown.name == alert.name => return Ok(()),
             Showing::Alert(shown) => (shown.priority, Some(Blocker::Alert(Rc::clone(shown)))),
         };
@@ -163,6 +201,44 @@ impl Board {
         Ok(())
     }
 
+    /// The item on the panel that blocks a page at `now`, if one does. Only
+    /// an alert with the priority of a page or higher blocks a page.
+    pub fn page_blocker(&mut self, now: &Zoned, compositor: &mut Compositor) -> Option<Blocker> {
+        self.advance(now, compositor);
+        match &self.showing {
+            Showing::Alert(shown) if shown.priority >= Priority::PAGE => {
+                Some(Blocker::Alert(Rc::clone(shown)))
+            }
+            Showing::Nothing | Showing::Message(_) | Showing::Alert(_) | Showing::Page(_) => None,
+        }
+    }
+
+    /// Show the page `scene` at `now`, if no alert blocks it. It replaces a
+    /// page or an alert of a lower priority. An interrupted message goes back
+    /// to the front of the queue.
+    ///
+    /// # Errors
+    /// [`PageRefused`] if an alert with the same or a higher priority shows.
+    pub fn page(
+        &mut self,
+        scene: PageScene,
+        now: &Zoned,
+        compositor: &mut Compositor,
+    ) -> Result<(), PageRefused> {
+        let page = scene.page();
+        if let Some(by) = self.page_blocker(now, compositor) {
+            return Err(PageRefused { page, by });
+        }
+        compositor.clear_foreground();
+        if let Showing::Message(message) =
+            core::mem::replace(&mut self.showing, Showing::Page(page))
+        {
+            self.queue.put_back(message);
+        }
+        compositor.push(Box::new(scene));
+        Ok(())
+    }
+
     /// Remove the alert on the panel, if one shows. Then start the next
     /// message.
     pub fn stop_alert(&mut self, now: &Zoned, compositor: &mut Compositor) {
@@ -179,7 +255,7 @@ impl Board {
         self.queue.clear();
         let removable = match &self.showing {
             Showing::Nothing => false,
-            Showing::Message(_) => true,
+            Showing::Message(_) | Showing::Page(_) => true,
             Showing::Alert(alert) => alert.clear == ClearRule::Removable,
         };
         if removable {
@@ -201,7 +277,16 @@ impl Board {
     pub fn alert_name(&self) -> Option<&str> {
         match &self.showing {
             Showing::Alert(alert) => Some(&alert.name),
-            Showing::Nothing | Showing::Message(_) => None,
+            Showing::Nothing | Showing::Message(_) | Showing::Page(_) => None,
+        }
+    }
+
+    /// The name of the page on the panel.
+    #[must_use]
+    pub fn page_name(&self) -> Option<PageName> {
+        match &self.showing {
+            Showing::Page(page) => Some(*page),
+            Showing::Nothing | Showing::Message(_) | Showing::Alert(_) => None,
         }
     }
 }
@@ -211,6 +296,7 @@ mod tests {
     use super::*;
     use crate::alert::Alerts;
     use crate::clock::Clock;
+    use crate::page::{PageData, PageName, PageScene, Reading};
     use crate::{Frame, Scene};
     use jiff::tz::TimeZone;
     use jiff::{SignedDuration, Timestamp};
@@ -261,6 +347,24 @@ mod tests {
 
     /// The frame on the panel at `now`, after the board advances. The image
     /// must change at `now`.
+    fn reading() -> PageData {
+        PageData::Reading(Some(Reading {
+            time: ts(0),
+            temp_f: 41.5,
+            humidity: 92.0,
+            p25: 5.0,
+            p10: 5.0,
+        }))
+    }
+
+    fn page(name: PageName, start: i64) -> PageScene {
+        PageScene::new(name, &reading(), ts(start), 64, Schedule::legacy())
+    }
+
+    fn page_at(name: PageName, start: i64, now: &Zoned) -> Frame {
+        alone(Box::new(page(name, start)), now)
+    }
+
     fn shown(board: &mut Board, compositor: &mut Compositor, now: &Zoned) -> Frame {
         board.advance(now, compositor);
         compositor
@@ -481,5 +585,148 @@ mod tests {
         b.message(msg("HI"), &at(0), &mut c).unwrap();
         let (_, brightness) = c.update(&at(40)).unwrap();
         assert_eq!(brightness, Brightness::new(7));
+    }
+
+    // Pages (`openspec/specs/sensor-pages`).
+
+    #[test]
+    fn page_over_the_clock_ends_after_30_s() {
+        let (mut b, mut c) = setup();
+        b.advance(&at(0), &mut c);
+        assert_eq!(b.page(page(PageName::Outdoor, 0), &at(0), &mut c), Ok(()));
+        assert_eq!(b.page_name(), Some(PageName::Outdoor));
+        assert_eq!(
+            shown(&mut b, &mut c, &at(0)),
+            page_at(PageName::Outdoor, 0, &at(0))
+        );
+        assert_eq!(shown(&mut b, &mut c, &at(30_000)), clock_at(&at(30_000)));
+        assert_eq!(b.page_name(), None);
+    }
+
+    #[test]
+    fn a_page_replaces_a_page() {
+        let (mut b, mut c) = setup();
+        b.page(page(PageName::Outdoor, 0), &at(0), &mut c).unwrap();
+        b.page(page(PageName::Indoor, 10_000), &at(10_000), &mut c)
+            .unwrap();
+        assert_eq!(b.page_name(), Some(PageName::Indoor));
+        assert_eq!(c.foreground_len(), 1);
+        assert_eq!(
+            shown(&mut b, &mut c, &at(10_000)),
+            page_at(PageName::Indoor, 10_000, &at(10_000))
+        );
+        // The indoor page shows until T + 40 s.
+        b.advance(&at(39_999), &mut c);
+        assert_eq!(b.page_name(), Some(PageName::Indoor));
+        assert_eq!(shown(&mut b, &mut c, &at(40_000)), clock_at(&at(40_000)));
+    }
+
+    #[test]
+    fn page_over_a_message() {
+        let (mut b, mut c) = setup();
+        b.message(msg("HI"), &at(0), &mut c).unwrap();
+        assert_eq!(
+            b.page(page(PageName::Outdoor, 1000), &at(1000), &mut c),
+            Ok(())
+        );
+        assert_eq!(b.page_name(), Some(PageName::Outdoor));
+        assert_eq!(b.messages(), 1, "the message waits");
+        assert_eq!(shown(&mut b, &mut c, &at(31_000)), Frame::new(64, 32));
+        assert_eq!(
+            shown(&mut b, &mut c, &at(31_040)),
+            scroll_at("HI", 31_000, &at(31_040))
+        );
+    }
+
+    #[test]
+    fn message_during_a_page() {
+        let (mut b, mut c) = setup();
+        b.page(page(PageName::Indoor, 0), &at(0), &mut c).unwrap();
+        assert_eq!(b.message(msg("hello"), &at(1000), &mut c), Ok(()));
+        assert_eq!(b.page_name(), Some(PageName::Indoor));
+        assert_eq!(b.messages(), 1);
+        assert_eq!(shown(&mut b, &mut c, &at(30_000)), Frame::new(64, 32));
+        assert_eq!(
+            shown(&mut b, &mut c, &at(30_040)),
+            scroll_at("hello", 30_000, &at(30_040))
+        );
+    }
+
+    #[test]
+    fn clear_removes_a_page() {
+        let (mut b, mut c) = setup();
+        b.page(page(PageName::Weather, 0), &at(0), &mut c).unwrap();
+        b.clear(&at(1000), &mut c);
+        assert_eq!(b.page_name(), None);
+        assert_eq!(c.foreground_len(), 0);
+    }
+
+    #[test]
+    fn stop_alert_keeps_a_page() {
+        let (mut b, mut c) = setup();
+        b.page(page(PageName::Weather, 0), &at(0), &mut c).unwrap();
+        b.stop_alert(&at(1000), &mut c);
+        assert_eq!(b.page_name(), Some(PageName::Weather));
+    }
+
+    #[test]
+    fn bed_flash_does_not_interrupt_a_page() {
+        let (mut b, mut c) = setup();
+        b.page(page(PageName::Outdoor, 0), &at(0), &mut c).unwrap();
+        let err = b.alert(alert("bed-flash"), &at(1000), &mut c).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "the alert 'bed-flash' did not start. A page on the panel has the same or a higher priority."
+        );
+        assert_eq!(b.page_name(), Some(PageName::Outdoor));
+    }
+
+    #[test]
+    fn bedtime_interrupts_a_page() {
+        let (mut b, mut c) = setup();
+        b.page(page(PageName::Indoor, 0), &at(0), &mut c).unwrap();
+        assert_eq!(b.alert(alert("bedtime"), &at(1000), &mut c), Ok(()));
+        assert_eq!(b.alert_name(), Some("bedtime"));
+        assert_eq!(b.page_name(), None);
+        // After bedtime, the clock shows, not the page.
+        let finish = AlertScene::new(alert("bedtime"), ts(1000), 64, Schedule::legacy());
+        let end = (1000..200_000)
+            .step_by(40)
+            .find(|&ms| finish.is_finished(&at(ms)))
+            .unwrap();
+        assert_eq!(shown(&mut b, &mut c, &at(end)), clock_at(&at(end)));
+        assert_eq!(b.page_name(), None);
+    }
+
+    #[test]
+    fn page_during_a_higher_alert() {
+        let (mut b, mut c) = setup();
+        b.alert(alert("panic"), &at(0), &mut c).unwrap();
+        assert_eq!(
+            b.page_blocker(&at(1000), &mut c),
+            Some(Blocker::Alert(alert("panic")))
+        );
+        let err = b
+            .page(page(PageName::Outdoor, 1000), &at(1000), &mut c)
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "the page 'outdoor' did not show. The alert 'panic' on the panel has the same or a higher priority."
+        );
+        assert_eq!(b.alert_name(), Some("panic"));
+        assert_eq!(b.page_name(), None);
+    }
+
+    #[test]
+    fn nothing_blocks_a_page_over_a_message_or_bed_flash() {
+        let (mut b, mut c) = setup();
+        assert_eq!(b.page_blocker(&at(0), &mut c), None);
+        b.message(msg("HI"), &at(0), &mut c).unwrap();
+        assert_eq!(b.page_blocker(&at(0), &mut c), None);
+        b.clear(&at(0), &mut c);
+        b.alert(alert("bed-flash"), &at(0), &mut c).unwrap();
+        assert_eq!(b.page_blocker(&at(0), &mut c), None);
+        assert_eq!(b.page(page(PageName::Indoor, 0), &at(0), &mut c), Ok(()));
+        assert_eq!(b.alert_name(), None);
     }
 }

@@ -18,8 +18,8 @@
 
 ## 4. The board (`sensor-pages`, `alerts`)
 
-- [ ] 4.1 Red: write `Board` tests: "A page replaces a page" and "Page over a message" (the message restarts after). Write "Message during a page" and "Clear removes a page". Write "Bed-flash does not interrupt a page" and "Bedtime interrupts a page" (the clock shows after, not the page). Test the `page_blocker` result during `panic`. See them fail.
-- [ ] 4.2 Green: add `Showing::Page`, `Priority::PAGE`, `Blocker::Page`, `Board::page`, `Board::page_blocker`, and `Board::page_name` (D6). Verify that the 4.1 tests and all earlier board tests pass.
+- [x] 4.1 Red: write `Board` tests: "A page replaces a page" and "Page over a message" (the message restarts after). Write "Message during a page" and "Clear removes a page". Write "Bed-flash does not interrupt a page" and "Bedtime interrupts a page" (the clock shows after, not the page). Test the `page_blocker` result during `panic`. See them fail.
+- [x] 4.2 Green: add `Showing::Page`, `Priority::PAGE`, `Blocker::Page`, `Board::page`, `Board::page_blocker`, and `Board::page_name` (D6). Verify that the 4.1 tests and all earlier board tests pass.
 
 ## 5. Config (`daemon-config`)
 
