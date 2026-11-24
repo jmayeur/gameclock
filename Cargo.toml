@@ -23,7 +23,7 @@ cc = "1.11.1"
 # Blocking, thread-free signal waits for gameclockd (docs/adr/0010).
 signal-hook = "0.4.6"
 # Time and time zones (docs/adr/0013). Each crate adds the features it needs.
-jiff = { version = "0.2.42", default-features = false, features = ["std"] }
+jiff = { version = "1.0.2", default-features = false, features = ["std"] }
 # The config file, read only in gameclockd (docs/adr/0019). No `display`:
 # the daemon reads the file and never writes it.
 serde = { version = "1.0.229", features = ["derive"] }
